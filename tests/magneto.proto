@@ -4,7 +4,7 @@ import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "Google.Protobuf.Examples.AddressBook";
 
-enum SomeType {
+enum GlobalType {
   A = 0;
   B = 1;
   C = 2;
@@ -16,15 +16,23 @@ message Person {
   int32 id = 2;  // Unique ID number for this person.
   string email = 3;
 
-  enum PhoneType {
+  enum OuterPhoneType {
     MOBILE = 0;
     HOME = 1;
     WORK = 2;
   }
 
   message PhoneNumber {
+    enum InnerPhoneType {
+      MOBILE = 0;
+      HOME = 1;
+      WORK = 2;
+    }
+
     string number = 1;
-    PhoneType type = 2;
+    InnerPhoneType itype = 2;
+    OuterPhoneType otype = 3;
+    GlobalType gtype = 4;
   }
 
   repeated PhoneNumber phones = 4;
