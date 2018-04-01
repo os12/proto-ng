@@ -175,11 +175,12 @@ class Context:
 #
 
 class Node:
-    def verify(self):
-        return "Good!"
+    def __init__(self):
+        self.parent = None
 
 class FileNode(Node):
     def __init__(self, fname):
+        Node.__init__(self)
         self.statements = []
         self.imports = {}
         self.options = []
@@ -187,7 +188,6 @@ class FileNode(Node):
         self.enums = {}
         self.name = fname
         self.namespace = ""
-        self.parent = None
 
     def as_string(self):
         assert(self.namespace)
@@ -246,19 +246,23 @@ class FileNode(Node):
 
 class PackageNode(Node):
     def __init__(self, name):
+        Node.__init__(self)
         self.name = name
 
 class ImportNode(Node):
     def __init__(self, path):
+        Node.__init__(self)
         self.path = path
 
 class OptionNode(Node):
     def __init__(self, name, value):
+        Node.__init__(self)
         self.name = name
         self.value = value
 
 class MessageNode(Node):
     def __init__(self, fq_name, parent):
+        Node.__init__(self)
         self.parent = parent        # the parent Message or None
         self.fq_name = fq_name
         self.fields = {}
@@ -320,6 +324,7 @@ class MessageNode(Node):
 
 class EnumNode(Node):
     def __init__(self, fq_name):
+        Node.__init__(self)
         self.fq_name = fq_name
         self.values = {}
 
@@ -344,6 +349,7 @@ class EnumNode(Node):
 
 class FieldNode(Node):
     def __init__(self, name, id, ftype, is_builtin, specifier):
+        Node.__init__(self)
         self.name = name
         self.id = id
         self.ftype = ftype
@@ -618,13 +624,6 @@ def evalue(ctx, enum, scope):
     log(2, indent_from_scope(scope) + "Parsed an enum constant: " + fname.value)
 
 #
-# Semantic part.
-#
-def verify(file):
-    log(1, file.as_string())
-    log(1, "Good!")
-
-#
 # the main() part
 #
 import argparse
@@ -645,4 +644,4 @@ parser.add_argument("--with-imports", help="print AST for imported files",
 args = parser.parse_args()
 
 ast = parse_file(sys.argv[1])
-verify(ast)
+log(1, ast.as_string())
