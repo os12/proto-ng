@@ -39,7 +39,7 @@ class Scanner:
     def __init__(self, fname, flags = 0):
         import collections, re
 
-        log("Opening file: " + fname)
+        log(1, "Opening file: " + fname)
         self.__file = open(fname, "r")
         self.__queue = []
         self.filename = fname.split('/')[-1]
@@ -74,7 +74,7 @@ class Scanner:
     def get(self, idx = 0):
         while idx >= len(self.__queue):
             for token in self.__scan(self.__file.readline()):
-                # print("Got token: " + str(token))
+                log(3, "Got token: " + str(token))
                 self.__queue.append(token)
         return self.__queue[idx]
 
@@ -208,17 +208,38 @@ class MessageNode(Node):
         self.enums = {}
         self.messages = []
 
+    def as_string(self, prefix = ""):
+        s = prefix + "Message: " + self.fq_name + "\n"
+
+        # Fields
+        for id, field in self.fields.items():
+            s += field.as_string(prefix + "    ") + "\n"
+
+        # Sub-messages
+        for sub_msg in self.messages:
+            s += sub_msg.as_string(prefix + "    ")
+
+        return s
+
 class EnumNode(Node):
     def __init__(self, fq_name):
         self.fq_name = fq_name
         self.values = {}
 
 class FieldNode(Node):
-    def __init__(self, name, id, ftype, is_builtin):
+    def __init__(self, name, id, ftype, is_builtin, specifier):
         self.name = name
         self.id = id
         self.ftype = ftype
         self.is_builtin = is_builtin
+        self.is_repeated = False
+        if specifier and specifier.value == "repeated":
+            self.is_repeated = True
+
+    def as_string(self, prefix = ""):
+        return prefix + \
+            "[" + str(self.id) + "] " + self.name + " : " + self.ftype +\
+                (" (repeated)" if self.is_repeated else "")
 
 #
 # The main parser: builds AST for a single file.
@@ -251,8 +272,8 @@ def parse_file(path):
 #
 # Utils
 #
-def log(msg):
-    if __args.verbosity >= 1:
+def log(verbosity, msg):
+    if __args.verbosity >= verbosity:
         print(msg)
 
 # Grammar:
@@ -274,21 +295,21 @@ def statement(ctx, file_node):
 
     if keyword.type == Token.Type.Keyword and keyword.value == "package":
         file_node.namespace = package(ctx).name
-        log("Parsed a 'package' statement: " + file_node.namespace)
+        log(2, "Parsed a 'package' statement: " + file_node.namespace)
     elif keyword.type == Token.Type.Keyword and keyword.value == "import":
         statement_ast = imports(ctx)
-        log("Parsed an 'import' statement: " + statement_ast.path)
+        log(2, "Parsed an 'import' statement: " + statement_ast.path)
 
         ast = parse_file(statement_ast.path)
-        log("Parsed an imported file: " + ast.name)
+        log(2, "Parsed an imported file: " + ast.name)
 
         file_node.imports[ast.name] = ast
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
         file_node.options.append(option(ctx))
-        log("Parsed an 'option' statement: " + file_node.options[-1].name)
+        log(2, "Parsed an 'option' statement: " + file_node.options[-1].name)
     elif keyword.type == Token.Type.Keyword and keyword.value == "message":
-        file_node.messages.append(message(ctx, file_node.name))
-        log("Parsed a 'message' : " + file_node.messages[-1].fq_name)
+        file_node.messages.append(message(ctx, file_node.namespace))
+        log(2, "Parsed a 'message' : " + file_node.messages[-1].fq_name)
     elif keyword.type == Token.Type.Keyword and keyword.value == "enum":
         enum(ctx, file_node)
     else:
@@ -325,7 +346,7 @@ def option(ctx):
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
 def message(ctx, scope):
-    fq_name = ctx.consume_identifier(message.__name__).value + "."
+    fq_name = ctx.consume_identifier(message.__name__).value
     if scope:
         fq_name = scope + "." + fq_name
 
@@ -384,11 +405,12 @@ def decl(ctx, parent, scope):
     ctx.consume_equals(decl.__name__)
     fid = ctx.consume_number(decl.__name__)
     ctx.consume_semi(decl.__name__)
-    parent.fields[int(fid.value)] = FieldNode(scope + fname.value,
+    parent.fields[int(fid.value)] = FieldNode(fname.value,
                                               int(fid.value),
                                               ftype.value,
-                                              is_builtin)
-    log("Parsed a 'field' declaration: " + scope + fname.value)
+                                              is_builtin,
+                                              spec)
+    log(2, "Parsed a 'field' declaration: " + fname.value)
 
 # Grammar:
 #  <decl>     ::= ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
@@ -399,7 +421,7 @@ def enum(ctx, parent, scope = ""):
     parent.enums[ename.value] = ast
     evalue_list(ctx, ast)
     ctx.consume_scope_close(enum.__name__)
-    log("Parsed an 'enum' statement: " + parent.enums[ename.value].fq_name)
+    log(2, "Parsed an 'enum' statement: " + parent.enums[ename.value].fq_name)
 
 # Grammar:
 #  <evalue_list>     ::= <evalue> [ <evalue> ]
@@ -417,6 +439,14 @@ def evalue(ctx, enum):
     enum.values[int(eid.value)] = fname.value
 
 #
+# Semantic part.
+#
+def verify(file):
+    for msg in file.messages:
+        log(1, msg.as_string())
+    log(1, "Good!")
+
+#
 # the main() part
 #
 import argparse
@@ -431,4 +461,4 @@ parser.add_argument('filename', metavar='filename',
 __args = parser.parse_args()
 
 ast = parse_file(sys.argv[1])
-print(str(ast.verify()))
+verify(ast)
