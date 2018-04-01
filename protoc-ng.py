@@ -191,7 +191,15 @@ class FileNode(Node):
 
     def as_string(self):
         assert(self.namespace)
-        s = "AST for " + self.name + ", namespace=" + self.namespace + "\n\n"
+
+        s = ""
+
+        global args
+        if args.with_imports:
+            for file_name, ast in self.imports.items():
+                s += ast.as_string()
+
+        s += "\nAST for " + self.name + ", namespace=" + self.namespace + "\n\n"
 
         # Enums
         for name, enum in self.enums.items():
@@ -624,12 +632,16 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('-I', '--include', help='Include (search) directory',
                     action='append')
+parser.add_argument('filename', metavar='filename',
+                    help='Input file name')
+
 parser.add_argument("-v", "--verbosity", help="increase output verbosity",
                     action="count", default=0)
 parser.add_argument("--fqdn", help="print fully-qualified message and enum types in AST",
                     action='store_true')
-parser.add_argument('filename', metavar='filename',
-                    help='Input file name')
+parser.add_argument("--with-imports", help="print AST for imported files",
+                    action='store_true')
+
 args = parser.parse_args()
 
 ast = parse_file(sys.argv[1])
