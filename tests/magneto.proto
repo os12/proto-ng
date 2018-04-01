@@ -1,0 +1,9 @@
+package tutorial;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Google.Protobuf.Examples.AddressBook";
+
+message AddressBook {
+  repeated Person people = 1;
+}
