@@ -179,7 +179,7 @@ class FileNode(Node):
         self.imports = []
         self.options = []
         self.messages = []
-        self.enums = []
+        self.enums = {}
         self.name = ""
 
 class PackageNode(Node):
@@ -199,7 +199,7 @@ class MessageNode(Node):
     def __init__(self, fq_name):
         self.fq_name = fq_name
         self.fields = {}
-        self.enums = []
+        self.enums = {}
         self.messages = []
 
 class EnumNode(Node):
@@ -233,7 +233,7 @@ def file(ctx):
     return ast
 
 # Grammar:
-#  <statement>     ::= <package> | <import> | <option> | <message>
+#  <statement>     ::= <package> | <import> | <option> | <message> | <enum>
 def statement(ctx, file_node):
     keyword = ctx.consume_keyword(statement.__name__)
 
@@ -249,6 +249,8 @@ def statement(ctx, file_node):
     elif keyword.type == Token.Type.Keyword and keyword.value == "message":
         file_node.messages.append(message(ctx, file_node.name))
         log("Parsed a 'message' : " + file_node.messages[-1].fq_name)
+    elif keyword.type == Token.Type.Keyword and keyword.value == "enum":
+        enum(ctx, file_node)
     else:
         raise ValueError("Unexpected keyword while parsing the 'statement' rule: '" +
                 keyword.value + "'")
@@ -307,7 +309,7 @@ def decl_list(ctx, parent, scope):
 #                       [ OPEN_SQUARE DEFAULT EQUALS builtin-value CLOSE_SQUARE ]
 #                       SEMI
 #               | identifier [ DOT identifier ] identifier EQALS number SEMI
-#               | ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
+#               | <enum>
 def decl(ctx, parent, scope):
     spec = None
     if ctx.scanner.next() == Token.Type.Specifier:
@@ -330,13 +332,7 @@ def decl(ctx, parent, scope):
         is_builtin = False
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
-        ename = ctx.consume_identifier(decl.__name__)
-        ctx.consume_scope_open(decl.__name__)
-        enum = EnumNode(scope + ename.value)
-        parent.enums.append(enum)
-        evalue_list(ctx, enum)
-        ctx.consume_scope_close(decl.__name__)
-        log("Parsed an 'enum' statement: " + parent.enums[-1].fq_name)
+        enum(ctx, parent, scope)
         return
     else:
         ctx.throw(decl.__name__)
@@ -349,6 +345,17 @@ def decl(ctx, parent, scope):
                                               ftype.value,
                                               is_builtin)
     log("Parsed a 'field' declaration: " + scope + fname.value)
+
+# Grammar:
+#  <decl>     ::= ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
+def enum(ctx, parent, scope = ""):
+    ename = ctx.consume_identifier(enum.__name__)
+    ctx.consume_scope_open(enum.__name__)
+    ast = EnumNode(scope + ename.value)
+    parent.enums[ename.value] = ast
+    evalue_list(ctx, ast)
+    ctx.consume_scope_close(enum.__name__)
+    log("Parsed an 'enum' statement: " + parent.enums[ename.value].fq_name)
 
 # Grammar:
 #  <evalue_list>     ::= <evalue> [ <evalue> ]

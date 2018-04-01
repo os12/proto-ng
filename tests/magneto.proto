@@ -4,6 +4,12 @@ import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "Google.Protobuf.Examples.AddressBook";
 
+enum SomeType {
+  A = 0;
+  B = 1;
+  C = 2;
+}
+
 // This is my Person.
 message Person {
   string name = 1;
