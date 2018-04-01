@@ -12,7 +12,6 @@ class Token:
         Specifier = 4
         Identifier = 5
 
-        BuiltinType = 6
         Keyword = 7
         Number = 8
 
@@ -47,12 +46,12 @@ class Scanner:
             Token.Type.Identifier, Token.Type.Specifier,
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
 
-        self.__keywords = {'package', 'import', 'option', 'message'}
+        self.__keywords = {'package', 'import', 'option', 'message', 'enum'}
         tokens = [
             ("Whitespace", r'[ \t\r\n]+|//.*$'),
 
             ("DataType", r'int32|int64|string|bool'),
-            ("Specifier", r'repeated|optional|enum'),
+            ("Specifier", r'repeated|optional'),
 
             ("Identifier", r'[A-Za-z][A-Za-z0-9_]*'),
 
@@ -121,52 +120,49 @@ class Context:
     def consume(self):
         return self.scanner.pop()
 
+    def throw(self, rule, trailer = ""):
+        raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
+                str(scanner.get()) + " on line " + str(self.scanner.line) +
+                "'." + trailer)
+
     def consume_keyword(self, rule):
         if self.scanner.next() != Token.Type.Keyword:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(scanner.get()) + "'. Expected a keyword.")
+            self.throw(rule, " Expected a keyword.")
         return self.consume()
 
     def consume_identifier(self, rule):
         if self.scanner.next() != Token.Type.Identifier:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(scanner.get()) + "'. Expected an identifier.")
+            self.throw(rule, " Expected an identifier.")
         return self.consume()
 
     def consume_string(self, rule):
         if self.scanner.next() != Token.Type.String:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(scanner.get()) + "'. Expected a string.")
+            self.throw(rule, " Expected a string.")
         return self.consume()
 
     def consume_number(self, rule):
         if self.scanner.next() != Token.Type.Number:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(scanner.get()) + "'. Expected a number.")
+            self.throw(rule, " Expected a number.")
         return self.consume()
 
     def consume_semi(self, rule):
         if self.scanner.next() != Token.Type.Semi:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(ctx.scanner.get()) + "'. Expected ';'.")
+            self.throw(rule, " Expected ';'.")
         return self.consume()
 
     def consume_equals(self, rule):
         if self.scanner.next() != Token.Type.Equals:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(ctx.scanner.get()) + "'. Expected '='.")
+            self.throw(rule, " Expected '='.")
         return self.consume()
 
     def consume_scope_open(self, rule):
         if self.scanner.next() != Token.Type.ScopeOpen:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(ctx.scanner.get()) + "'. Expected '{'.")
+            self.throw(rule, " Expected '{'.")
         return self.consume()
 
     def consume_scope_close(self, rule):
         if self.scanner.next() != Token.Type.ScopeClose:
-            raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(ctx.scanner.get()) + "'. Expected '}'.")
+            self.throw(rule, " Expected '}'.")
         return self.consume()
 
 #
@@ -183,6 +179,7 @@ class FileNode(Node):
         self.imports = []
         self.options = []
         self.messages = []
+        self.enums = []
         self.name = ""
 
 class PackageNode(Node):
@@ -202,6 +199,13 @@ class MessageNode(Node):
     def __init__(self, fq_name):
         self.fq_name = fq_name
         self.fields = {}
+        self.enums = []
+        self.messages = []
+
+class EnumNode(Node):
+    def __init__(self, fq_name):
+        self.fq_name = fq_name
+        self.values = {}
 
 class FieldNode(Node):
     def __init__(self, name, id, ftype, is_builtin):
@@ -275,7 +279,7 @@ def option(ctx):
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
 def message(ctx, scope):
-    fq_name = ctx.consume_identifier(message.__name__).value
+    fq_name = ctx.consume_identifier(message.__name__).value + "."
     if scope:
         fq_name = scope + "." + fq_name
 
@@ -286,11 +290,11 @@ def message(ctx, scope):
     return ast
 
 # Grammar:
-#  <decl_list>     ::= <decl> | <message> [ <decl> | <message> ]
+#  <decl_list>     ::= ( <decl> | <message> ) [ <decl> | <message> ]
 def decl_list(ctx, parent, scope):
     while ctx.scanner.next() != Token.Type.ScopeClose:
         # Process sub-messages.
-        if ctx.scanner.next() == Token.Type.Keyword and ctx.get().value == "message":
+        if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "message":
             ctx.consume_keyword(decl_list.__name__)
             parent.messages.append(message(ctx, scope))
             continue
@@ -302,33 +306,64 @@ def decl_list(ctx, parent, scope):
 #  <decl>     ::= [ SPECIFIER ] BUILTIN-TYPE identifier EQUALS number
 #                       [ OPEN_SQUARE DEFAULT EQUALS builtin-value CLOSE_SQUARE ]
 #                       SEMI
-#               | identifier identifier EQALS number SEMI
+#               | identifier [ DOT identifier ] identifier EQALS number SEMI
+#               | ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
 def decl(ctx, parent, scope):
     spec = None
     if ctx.scanner.next() == Token.Type.Specifier:
         spec = ctx.consume()
 
-    if ctx.scanner.next() == Token.Type.BuiltinType:
+    if ctx.scanner.next() == Token.Type.DataType:
         ftype = ctx.consume()
         fname = ctx.consume_identifier(decl.__name__)
         is_builtin = True
     elif ctx.scanner.next() == Token.Type.Identifier:
+        # 1. handle the type name, possible fully qualified.
         ftype = ctx.consume_identifier(decl.__name__)
+        while ctx.scanner.next() == Token.Type.Dot:
+            ctx.consume()
+            trailer = ctx.consume_identifier(decl.__name__)
+            ftype.value += "." + trailer.value
+
+        # 2. handle the filed name
         fname = ctx.consume_identifier(decl.__name__)
         is_builtin = False
+    elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
+        ctx.consume_keyword(decl.__name__)
+        ename = ctx.consume_identifier(decl.__name__)
+        ctx.consume_scope_open(decl.__name__)
+        enum = EnumNode(scope + ename.value)
+        parent.enums.append(enum)
+        evalue_list(ctx, enum)
+        ctx.consume_scope_close(decl.__name__)
+        log("Parsed an 'enum' statement: " + parent.enums[-1].fq_name)
+        return
     else:
-        raise ValueError("Unexpected token while parsing the '" + decl.__name__ +
-            "' rule: '" + str(ctx.scanner.get()) + "'.")
+        ctx.throw(decl.__name__)
 
     ctx.consume_equals(decl.__name__)
     fid = ctx.consume_number(decl.__name__)
     ctx.consume_semi(decl.__name__)
-    parent.fields[int(fid.value)] = FieldNode(fname.value,
+    parent.fields[int(fid.value)] = FieldNode(scope + fname.value,
                                               int(fid.value),
                                               ftype.value,
                                               is_builtin)
+    log("Parsed a 'field' declaration: " + scope + fname.value)
 
+# Grammar:
+#  <evalue_list>     ::= <evalue> [ <evalue> ]
+def evalue_list(ctx, parent):
+    while ctx.scanner.next() != Token.Type.ScopeClose:
+        evalue(ctx, parent)
 
+# Grammar:
+#  <evalue>     ::= identifier EQALS number SEMI
+def evalue(ctx, enum):
+    fname = ctx.consume_identifier(evalue.__name__)
+    ctx.consume_equals(evalue.__name__)
+    eid = ctx.consume_number(evalue.__name__)
+    ctx.consume_semi(evalue.__name__)
+    enum.values[int(eid.value)] = fname.value
 
 #
 # the main() part
