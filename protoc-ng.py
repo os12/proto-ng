@@ -39,8 +39,10 @@ class Scanner:
     def __init__(self, fname, flags = 0):
         import collections, re
 
+        log("Opening file: " + fname)
         self.__file = open(fname, "r")
         self.__queue = []
+        self.filename = fname.split('/')[-1]
         self.line = 0
         self.non_terminals = [
             Token.Type.Identifier, Token.Type.Specifier,
@@ -138,7 +140,10 @@ class Context:
     def consume_string(self, rule):
         if self.scanner.next() != Token.Type.String:
             self.throw(rule, " Expected a string.")
-        return self.consume()
+        tok = self.consume()
+        assert(tok.value[0] == "\"" and tok.value[-1] == "\"")
+        tok.value = tok.value[1:-1]
+        return tok
 
     def consume_number(self, rule):
         if self.scanner.next() != Token.Type.Number:
@@ -174,13 +179,14 @@ class Node:
         return "Good!"
 
 class FileNode(Node):
-    def __init__(self):
+    def __init__(self, fname):
         self.statements = []
-        self.imports = []
+        self.imports = {}
         self.options = []
         self.messages = []
         self.enums = {}
-        self.name = ""
+        self.name = fname
+        self.namespace = ""
 
 class PackageNode(Node):
     def __init__(self, name):
@@ -215,10 +221,39 @@ class FieldNode(Node):
         self.is_builtin = is_builtin
 
 #
+# The main parser: builds AST for a single file.
+#
+def parse_file(path):
+    import os.path
+
+    # First fine the file. Let's start with the given path and then search
+    # the 'includes'.
+    if not os.path.isfile(path):
+        for inc in __args.include:
+            next_path = inc
+            assert(next_path)
+            if next_path[-1] != '/':
+                next_path += '/'
+            next_path += path
+            if os.path.isfile(next_path):
+                path = next_path
+                break
+
+    scanner = Scanner(path)
+    if scanner.reached_eof():
+        raise ValueError("Nothing to parse!")
+
+    ctx = Context(scanner)
+    ast = file(ctx)
+    assert(ctx.scanner.reached_eof())
+    return ast
+
+#
 # Utils
 #
 def log(msg):
-    print(msg)
+    if __args.verbosity >= 1:
+        print(msg)
 
 # Grammar:
 #  <input>         ::= <statement> [ <statement> ] EOF
@@ -226,7 +261,7 @@ def file(ctx):
     if ctx.scanner.reached_eof():
         raise ValueError("Reached EoF while parsing the 'file' rule")
 
-    ast = FileNode()
+    ast = FileNode(ctx.scanner.filename)
     while not ctx.scanner.reached_eof():
         statement(ctx, ast)
 
@@ -238,11 +273,16 @@ def statement(ctx, file_node):
     keyword = ctx.consume_keyword(statement.__name__)
 
     if keyword.type == Token.Type.Keyword and keyword.value == "package":
-        file_node.name = package(ctx).name
-        log("Parsed a 'package' statement")
+        file_node.namespace = package(ctx).name
+        log("Parsed a 'package' statement: " + file_node.namespace)
     elif keyword.type == Token.Type.Keyword and keyword.value == "import":
-        file_node.imports.append(imports(ctx))
-        log("Parsed an 'import' statement")
+        statement_ast = imports(ctx)
+        log("Parsed an 'import' statement: " + statement_ast.path)
+
+        ast = parse_file(statement_ast.path)
+        log("Parsed an imported file: " + ast.name)
+
+        file_node.imports[ast.name] = ast
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
         file_node.options.append(option(ctx))
         log("Parsed an 'option' statement: " + file_node.options[-1].name)
@@ -256,9 +296,13 @@ def statement(ctx, file_node):
                 keyword.value + "'")
 
 # Grammar:
-#  <package>     ::= PACKAGE identifier SEMI
+#  <package>     ::= PACKAGE [ DOT identifier ] identifier SEMI
 def package(ctx):
     name = ctx.consume_identifier(package.__name__)
+    while ctx.scanner.next() == Token.Type.Dot:
+        ctx.consume()
+        trailer = ctx.consume_identifier(package.__name__)
+        name.value += "." + trailer.value
     ctx.consume_semi(package.__name__)
     return PackageNode(name.value)
 
@@ -375,12 +419,16 @@ def evalue(ctx, enum):
 #
 # the main() part
 #
-scanner = Scanner(sys.argv[1])
-if scanner.reached_eof():
-    raise ValueError("Nothing to parse!")
+import argparse
 
-ctx = Context(scanner)
-ast = file(ctx)
-assert(ctx.scanner.reached_eof())
+parser = argparse.ArgumentParser()
+parser.add_argument('-I', '--include', help='Include (search) directory',
+                    action='append')
+parser.add_argument("-v", "--verbosity", help="increase output verbosity",
+                    action="count", default=0)
+parser.add_argument('filename', metavar='filename',
+                    help='Input file name')
+__args = parser.parse_args()
 
+ast = parse_file(sys.argv[1])
 print(str(ast.verify()))
