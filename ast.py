@@ -29,7 +29,7 @@ class Node:
     def __init__(self):
         self.parent = None
 
-class FileNode(Node):
+class File(Node):
     def __init__(self, fname):
         Node.__init__(self)
         self.statements = []
@@ -116,23 +116,23 @@ class FileNode(Node):
             writeln(h_file, "}  // " + ns)
 
 
-class PackageNode(Node):
+class Package(Node):
     def __init__(self, name):
         Node.__init__(self)
         self.name = name
 
-class ImportNode(Node):
+class Import(Node):
     def __init__(self, path):
         Node.__init__(self)
         self.path = path
 
-class OptionNode(Node):
+class Option(Node):
     def __init__(self, name, value):
         Node.__init__(self)
         self.name = name
         self.value = value
 
-class MessageNode(Node):
+class Message(Node):
     def __init__(self, fq_name, parent):
         Node.__init__(self)
         self.parent = parent        # the parent Message or None
@@ -216,7 +216,7 @@ class MessageNode(Node):
 
         writeln(file, "};\n", indent)
 
-class EnumNode(Node):
+class Enum(Node):
     def __init__(self, fq_name):
         Node.__init__(self)
         self.fq_name = fq_name
@@ -249,7 +249,7 @@ class EnumNode(Node):
 
         writeln(file, "};", indent)
 
-class FieldNode(Node):
+class Field(Node):
     def __init__(self, name, id, fq_type, raw_type, specifier):
         Node.__init__(self)
         self.name = name

@@ -38,7 +38,7 @@ def file(ctx):
     if ctx.scanner.reached_eof():
         raise ValueError("Reached EoF while parsing the 'file' rule")
 
-    file = ast.FileNode(ctx.scanner.filename)
+    file = ast.File(ctx.scanner.filename)
     while not ctx.scanner.reached_eof():
         statement(ctx, file)
 
@@ -80,14 +80,14 @@ def package(ctx):
         trailer = ctx.consume_identifier(package.__name__)
         name.value += "." + trailer.value
     ctx.consume_semi(package.__name__)
-    return ast.PackageNode(name.value)
+    return ast.Package(name.value)
 
 # Grammar:
 #  <import>     ::= IMPORT string SEMI
 def imports(ctx):
     fname = ctx.consume_string(imports.__name__)
     ctx.consume_semi(imports.__name__)
-    return ast.ImportNode(fname.value)
+    return ast.Import(fname.value)
 
 # Grammar:
 #  <option>     ::= OPTION identifier EQUALS string SEMI
@@ -96,7 +96,7 @@ def option(ctx):
     ctx.consume_equals(option.__name__)
     value = ctx.consume_string(option.__name__)
     ctx.consume_semi(option.__name__)
-    return ast.OptionNode(name.value, value.value)
+    return ast.Option(name.value, value.value)
 
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
@@ -105,7 +105,7 @@ def message(ctx, parent, scope):
     if scope:
         fq_name = scope + fq_name
 
-    msg = ast.MessageNode(fq_name, parent)
+    msg = ast.Message(fq_name, parent)
     ctx.consume_scope_open(message.__name__)
 
     parent.messages[msg.name()] = msg
@@ -145,10 +145,10 @@ def decl(ctx, parent, scope):
         ctx.consume_equals(decl.__name__)
         fid = ctx.consume_number(decl.__name__)
 
-        field_ast = ast.FieldNode(fname.value,
-                                  int(fid.value),
-                                  ftype, ftype,
-                                  spec)
+        field_ast = ast.Field(fname.value,
+                              int(fid.value),
+                              ftype, ftype,
+                              spec)
         field_ast.is_builtin = True
     elif ctx.scanner.next() == Token.Type.Identifier:
         # 1a. take the type name, possible fully qualified.
@@ -184,12 +184,12 @@ def decl(ctx, parent, scope):
         ctx.consume_equals(decl.__name__)
         fid = ctx.consume_number(decl.__name__)
 
-        field_ast = ast.FieldNode(fname.value,
-                                  int(fid.value),
-                                  resolved_type_name,
-                                  ftype,
-                                  spec)
-        if type(resolved_type) is ast.EnumNode:
+        field_ast = ast.Field(fname.value,
+                              int(fid.value),
+                              resolved_type_name,
+                              ftype,
+                              spec)
+        if type(resolved_type) is ast.Enum:
             field_ast.is_enum = True
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
@@ -197,7 +197,6 @@ def decl(ctx, parent, scope):
         return
     else:
         ctx.throw(decl.__name__)
-
 
     ctx.consume_semi(decl.__name__)
 
@@ -213,7 +212,7 @@ def enum(ctx, parent, scope):
     if scope:
         assert(scope[-1] == '.')
         fq_name = scope + name
-    enum_ast = ast.EnumNode(fq_name)
+    enum_ast = ast.Enum(fq_name)
 
     parent.enums[name] = enum_ast
     log(2, indent_from_scope(fq_name) + "Parsed an 'enum' statement: " + fq_name)
