@@ -1,4 +1,6 @@
-import ast, scanner, sys
+#!/usr/bin/python3
+
+import nodes, scanner, sys
 import utils
 
 from scanner import Token
@@ -38,7 +40,7 @@ def file(ctx):
     if ctx.scanner.reached_eof():
         raise ValueError("Reached EoF while parsing the 'file' rule")
 
-    file = ast.File(ctx.scanner.filename)
+    file = nodes.File(ctx.scanner.file_path)
     while not ctx.scanner.reached_eof():
         statement(ctx, file)
 
@@ -57,10 +59,10 @@ def statement(ctx, file_node):
         log(2, "Parsed an 'import' statement: " + statement_ast.path)
 
         file = parse_file(statement_ast.path)
-        log(2, "Parsed an imported file: " + file.name)
+        log(2, "Parsed an imported file: " + file.filename())
         file.make_forward_decl_names()
 
-        file_node.imports[file.name] = file
+        file_node.imports[file.path] = file
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
         file_node.options.append(option(ctx))
         log(2, "Parsed an 'option' statement: " + file_node.options[-1].name)
@@ -81,14 +83,14 @@ def package(ctx):
         trailer = ctx.consume_identifier(package.__name__)
         name.value += "." + trailer.value
     ctx.consume_semi(package.__name__)
-    return ast.Package(name.value)
+    return nodes.Package(name.value)
 
 # Grammar:
 #  <import>     ::= IMPORT string SEMI
 def imports(ctx):
     fname = ctx.consume_string(imports.__name__)
     ctx.consume_semi(imports.__name__)
-    return ast.Import(fname.value)
+    return nodes.Import(fname.value)
 
 # Grammar:
 #  <option>     ::= OPTION identifier EQUALS string SEMI
@@ -97,7 +99,7 @@ def option(ctx):
     ctx.consume_equals(option.__name__)
     value = ctx.consume_string(option.__name__)
     ctx.consume_semi(option.__name__)
-    return ast.Option(name.value, value.value)
+    return nodes.Option(name.value, value.value)
 
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
@@ -106,7 +108,7 @@ def message(ctx, parent, scope):
     if scope:
         fq_name = scope + fq_name
 
-    msg = ast.Message(fq_name, parent)
+    msg = nodes.Message(fq_name, parent)
     ctx.consume_scope_open(message.__name__)
 
     parent.messages[msg.name()] = msg
@@ -146,10 +148,10 @@ def decl(ctx, parent, scope):
         ctx.consume_equals(decl.__name__)
         fid = ctx.consume_number(decl.__name__)
 
-        field_ast = ast.Field(fname.value,
-                              int(fid.value),
-                              ftype, ftype,
-                              spec)
+        field_ast = nodes.Field(fname.value,
+                                int(fid.value),
+                                ftype, ftype,
+                                spec)
         field_ast.is_builtin = True
     elif ctx.scanner.next() == Token.Type.Identifier:
         # 1a. take the type name, possible fully qualified.
@@ -162,20 +164,20 @@ def decl(ctx, parent, scope):
         # 1b. verify the type:
         #   - unqualified reference is expanded into a fully-qualified name.
         if ftype.count(".") == 0:
-            resolved_type = ast.find_type(parent, ftype)
+            resolved_type = nodes.find_type(parent, ftype)
             if not resolved_type:
                 sys.exit("Failed to resolve message type: \"" + ftype +
                     "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                    ast.find_top_parent(parent).as_string())
+                    nodes.find_top_parent(parent).as_string())
             assert(resolved_type.name() == ftype)
             resolved_type_name = resolved_type.fq_name
             forward_decl_name = ftype
         else:
-            resolved_type = ast.find_top_parent(parent).resolve_type(ftype)
+            resolved_type = nodes.find_top_parent(parent).resolve_type(ftype)
             if not resolved_type:
                 sys.exit("Failed to resolve an FQ message type: \"" + ftype +
                     "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                    ast.find_top_parent(parent).as_string())
+                    nodes.find_top_parent(parent).as_string())
             assert(resolved_type.fq_name == ftype)
             resolved_type_name = ftype
             forward_decl_name = resolved_type.forward_decl_name
@@ -187,12 +189,12 @@ def decl(ctx, parent, scope):
         ctx.consume_equals(decl.__name__)
         fid = ctx.consume_number(decl.__name__)
 
-        field_ast = ast.Field(fname.value,
-                              int(fid.value),
-                              resolved_type_name,
-                              ftype,
-                              spec)
-        if type(resolved_type) is ast.Enum:
+        field_ast = nodes.Field(fname.value,
+                                int(fid.value),
+                                resolved_type_name,
+                                ftype,
+                                spec)
+        if type(resolved_type) is nodes.Enum:
             field_ast.is_enum = True
         else:
             field_ast.forward_decl_type = forward_decl_name
@@ -217,7 +219,7 @@ def enum(ctx, parent, scope):
     if scope:
         assert(scope[-1] == '.')
         fq_name = scope + name
-    enum_ast = ast.Enum(fq_name)
+    enum_ast = nodes.Enum(fq_name)
 
     parent.enums[name] = enum_ast
     log(2, indent_from_scope(fq_name) + "Parsed an 'enum' statement: " + fq_name)
@@ -262,7 +264,7 @@ parser.add_argument("--with-imports", help="print AST for imported files",
 
 args = parser.parse_args()
 utils.args = args
-ast.args = args
+nodes.args = args
 
 if not args.filename:
     sys.exit("Missing the <filename> argument.")
@@ -272,4 +274,4 @@ if not args.cpp_out:
 file = parse_file(args.filename)
 log(1, file.as_string())
 
-file.generate()
+file.generate(args.cpp_out)

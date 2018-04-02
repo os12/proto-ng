@@ -1,14 +1,21 @@
 from collections import namedtuple
 from utils import indent_from_scope
 
+import os
+
 Filename = namedtuple('Filename', ['cc', 'h'])
 
-def get_cpp_name(proto_name):
+# Builds output file paths. It must merge 'proto_name' with 'out_path'.
+def get_cpp_file_paths(proto_name, out_path):
+    assert(out_path)
+    if out_path[-1] != "/" and out_path[-1] != "\\":
+        out_path += "/"
     parts = proto_name.split('.')
     assert(parts[-1] == "proto")
     parts.pop(-1)
     parts.append("pbng")
-    return Filename(".".join(parts) + ".cc", ".".join(parts) + ".h")
+    return Filename(out_path + ".".join(parts) + ".cc",
+                    out_path + ".".join(parts) + ".h")
 
 def to_cpp_type(proto_type):
     if proto_type == "string":
@@ -21,6 +28,19 @@ def to_cpp_type(proto_type):
 def writeln(file, line, indent = 0):
     file.write("  " * indent + line + "\n")
 
+# Creates a new file in the specified path. The directories are created in the
+# "mkdir -p" fashion.
+def open_file(path):
+    assert(path.count('\\') == 0)
+
+    dir_list = path.split('/')[0:-1]
+    dir = "/".join(dir_list)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    assert(os.path.exists(dir))
+
+    return open(path, "w")
+
 #
 # AST nodes
 #
@@ -31,15 +51,21 @@ class Node:
 
 
 class File(Node):
-    def __init__(self, fname):
+    def __init__(self, fs_path):
         Node.__init__(self)
         self.statements = []
         self.imports = {}
         self.options = []
         self.messages = {}
         self.enums = {}
-        self.name = fname
+        self.path = fs_path
         self.namespace = ""
+
+        assert(self.path)
+        assert(self.path.count('\\') == 0), "Got a Windows path: " + self.path
+
+    def filename(self):
+        return self.path.split("/")[-1]
 
     def as_string(self):
         assert(self.namespace)
@@ -51,7 +77,7 @@ class File(Node):
             for file_name, ast in self.imports.items():
                 s += ast.as_string()
 
-        s += "\nAST for " + self.name + ", namespace=" + self.namespace + "\n\n"
+        s += "\nAST for " + self.filename() + ", namespace=" + self.namespace + "\n\n"
 
         # Enums
         for name, enum in self.enums.items():
@@ -100,10 +126,10 @@ class File(Node):
         for _, msg in self.messages.items():
             msg.make_forward_decl_names(to_cpp_type(self.namespace) + "::", "")
 
-    def generate(self):
-        fname = get_cpp_name(self.name)
-        cc_file = open(fname.cc, "w")
-        h_file = open(fname.h, "w")
+    def generate(self, out_path):
+        fname = get_cpp_file_paths(self.path, out_path)
+        cc_file = open_file(fname.cc)
+        h_file = open_file(fname.h)
 
         writeln(h_file, "#pragma once\n")
         writeln(h_file, "#include <cstdint>")
@@ -128,7 +154,7 @@ class File(Node):
         if len(self.messages.keys()) == 0:
             return
 
-        writeln(file, "// Forward declarations from " + self.name)
+        writeln(file, "// Forward declarations from " + self.filename())
         for ns in self.namespace.split("."):
             writeln(file, "namespace " + ns + " {")
 

@@ -33,13 +33,13 @@ class Token:
         return rv + ")"
 
 class Scanner:
-    def __init__(self, fname, flags = 0):
+    def __init__(self, file_path, flags = 0):
         import collections, re
 
-        log(1, "Opening file: " + fname)
-        self.__file = open(fname, "r")
+        log(1, "Opening file: " + file_path)
+        self.__file = open(file_path, "r")
         self.__queue = []
-        self.filename = fname.split('/')[-1]
+        self.file_path = file_path
         self.line = 0
         self.non_terminals = [
             Token.Type.Identifier, Token.Type.Specifier,
