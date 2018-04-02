@@ -16,7 +16,7 @@ def to_cpp_type(proto_type):
     elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
         return proto_type + "_t"
     else:
-        return proto_type
+        return proto_type.replace(".", "::")
 
 def writeln(file, line, indent = 0):
     file.write("  " * indent + line + "\n")
@@ -100,9 +100,13 @@ class File(Node):
         cc_file = open(fname.cc, "w")
         h_file = open(fname.h, "w")
 
-        writeln(h_file, "#pragma once")
+        writeln(h_file, "#pragma once\n")
         writeln(h_file, "#include <cstdint>")
-        writeln(h_file, "#include <string>")
+        writeln(h_file, "#include <string>\n")
+
+        for _, file_ast in self.imports.items():
+            file_ast.generate_forward_declarations(h_file)
+
         for ns in self.namespace.split("."):
             writeln(h_file, "namespace " + ns + " {")
 
@@ -115,6 +119,24 @@ class File(Node):
         for ns in self.namespace.split("."):
             writeln(h_file, "}  // " + ns)
 
+    def generate_forward_declarations(self, file):
+        if len(self.messages.keys()) == 0:
+            return
+
+        writeln(file, "// Forward declarations from " + self.name)
+        for ns in self.namespace.split("."):
+            writeln(file, "namespace " + ns + " {")
+
+        '''TODO: how do I deal with enums?'''
+        #for _, enum in self.enums.items():
+        #    enum.generate_header(file, 0)
+
+        for _, msg in self.messages.items():
+            msg.generate_forward_declarations(file, 0)
+
+        for ns in self.namespace.split("."):
+            writeln(file, "}  // " + ns)
+        writeln(file, "")
 
 class Package(Node):
     def __init__(self, name):
@@ -216,6 +238,23 @@ class Message(Node):
 
         writeln(file, "};\n", indent)
 
+    def generate_forward_declarations(self, file, indent):
+        writeln(file, "class " + self.name() + ";", indent)
+
+        # Enums
+        '''
+        if len(self.enums.keys()) > 0:
+            writeln(file, "// Enums", indent + 1)
+        for _, enum in self.enums.items():
+            enum.generate_header(file, indent + 1)
+        if len(self.enums.keys()) > 0:
+            writeln(file, "", indent)
+        '''
+
+        # (Sub)Messages
+        #for name, sub_msg in self.messages.items():
+        #    sub_msg.generate_header(file, indent + 1)
+
 class Enum(Node):
     def __init__(self, fq_name):
         Node.__init__(self)
@@ -282,8 +321,12 @@ class Field(Node):
                     "void set_" + self.name + "(" + to_cpp_type(self.raw_type) + ");",
                     indent)
         else:
-            writeln(file, "const " + self.raw_type + "& " + self.name + "() const;", indent)
-            writeln(file, self.raw_type + "& " + self.name + "();", indent)
+            writeln(file,
+                    "const " + to_cpp_type(self.raw_type) + "& " + self.name + "() const;",
+                    indent)
+            writeln(file,
+                    to_cpp_type(self.raw_type) + "& " + self.name + "();",
+                    indent)
         writeln(file, "", indent)
 
 # Looks for the given field type 'ftype' in the ever-widening message scopes (from inside
