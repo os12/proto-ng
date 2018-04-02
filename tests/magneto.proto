@@ -37,7 +37,9 @@ message Person {
 
   repeated PhoneNumber phones = 4;
 
-  google.protobuf.Timestamp last_updated = 5;
+  // Imported messages.
+  google.protobuf.Timestamp timestamp = 5;
+  google.protobuf.ForeignOuter.ForeignInner imported = 6;
 }
 
 message AddressBook {

@@ -58,6 +58,7 @@ def statement(ctx, file_node):
 
         file = parse_file(statement_ast.path)
         log(2, "Parsed an imported file: " + file.name)
+        file.make_forward_decl_names()
 
         file_node.imports[file.name] = file
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
@@ -168,6 +169,7 @@ def decl(ctx, parent, scope):
                     ast.find_top_parent(parent).as_string())
             assert(resolved_type.name() == ftype)
             resolved_type_name = resolved_type.fq_name
+            forward_decl_name = ftype
         else:
             resolved_type = ast.find_top_parent(parent).resolve_type(ftype)
             if not resolved_type:
@@ -176,6 +178,7 @@ def decl(ctx, parent, scope):
                     ast.find_top_parent(parent).as_string())
             assert(resolved_type.fq_name == ftype)
             resolved_type_name = ftype
+            forward_decl_name = resolved_type.forward_decl_name
 
         # 2. take the field name
         fname = ctx.consume_identifier(decl.__name__)
@@ -191,6 +194,8 @@ def decl(ctx, parent, scope):
                               spec)
         if type(resolved_type) is ast.Enum:
             field_ast.is_enum = True
+        else:
+            field_ast.forward_decl_type = forward_decl_name
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
         enum(ctx, parent, scope)

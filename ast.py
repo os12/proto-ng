@@ -29,6 +29,7 @@ class Node:
     def __init__(self):
         self.parent = None
 
+
 class File(Node):
     def __init__(self, fname):
         Node.__init__(self)
@@ -95,6 +96,10 @@ class File(Node):
                     return t
         return None
 
+    def make_forward_decl_names(self):
+        for _, msg in self.messages.items():
+            msg.make_forward_decl_names(to_cpp_type(self.namespace) + "::", "")
+
     def generate(self):
         fname = get_cpp_name(self.name)
         cc_file = open(fname.cc, "w")
@@ -132,27 +137,31 @@ class File(Node):
         #    enum.generate_header(file, 0)
 
         for _, msg in self.messages.items():
-            msg.generate_forward_declarations(file, 0)
+            msg.generate_forward_declarations(file)
 
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
         writeln(file, "")
+
 
 class Package(Node):
     def __init__(self, name):
         Node.__init__(self)
         self.name = name
 
+
 class Import(Node):
     def __init__(self, path):
         Node.__init__(self)
         self.path = path
+
 
 class Option(Node):
     def __init__(self, name, value):
         Node.__init__(self)
         self.name = name
         self.value = value
+
 
 class Message(Node):
     def __init__(self, fq_name, parent):
@@ -203,13 +212,13 @@ class Message(Node):
         front = parts.pop(0)
         assert(front)
 
-        if front in ast.enums:
+        if front in self.enums:
             if len(parts) == 0:
-                return ast.enums[ftype]
+                return self.enums[ftype]
             return None
 
-        if front in ast.messages:
-            msg = ast.messages[ftype]
+        if front in self.messages:
+            msg = self.messages[front]
             if len(parts) == 0:
                 return msg
             return msg.resolve_type(".".join(parts))
@@ -238,11 +247,11 @@ class Message(Node):
 
         writeln(file, "};\n", indent)
 
-    def generate_forward_declarations(self, file, indent):
-        writeln(file, "class " + self.name() + ";", indent)
+    def make_forward_decl_names(self, ns, name_prefix):
+        self.forward_decl_name = ns + name_prefix + self.name()
 
         # Enums
-        '''
+        ''' TODO - figure out what to do here
         if len(self.enums.keys()) > 0:
             writeln(file, "// Enums", indent + 1)
         for _, enum in self.enums.items():
@@ -252,8 +261,17 @@ class Message(Node):
         '''
 
         # (Sub)Messages
-        #for name, sub_msg in self.messages.items():
-        #    sub_msg.generate_header(file, indent + 1)
+        for _, sub_msg in self.messages.items():
+            sub_msg.make_forward_decl_names(ns, name_prefix + self.name() + "_")
+
+    def generate_forward_declarations(self, file):
+        assert(self.forward_decl_name)
+        writeln(file, "class " + self.forward_decl_name.split("::")[-1] + ";")
+
+        # (Sub)Messages
+        for _, sub_msg in self.messages.items():
+            sub_msg.generate_forward_declarations(file)
+
 
 class Enum(Node):
     def __init__(self, fq_name):
@@ -288,6 +306,7 @@ class Enum(Node):
 
         writeln(file, "};", indent)
 
+
 class Field(Node):
     def __init__(self, name, id, fq_type, raw_type, specifier):
         Node.__init__(self)
@@ -295,6 +314,7 @@ class Field(Node):
         self.id = id
         self.fq_type = fq_type
         self.raw_type = raw_type
+        self.forward_decl_type = ""
 
         self.is_enum = False
         self.is_builtin = False
@@ -322,12 +342,13 @@ class Field(Node):
                     indent)
         else:
             writeln(file,
-                    "const " + to_cpp_type(self.raw_type) + "& " + self.name + "() const;",
+                    "const " + self.forward_decl_type + "& " + self.name + "() const;",
                     indent)
             writeln(file,
-                    to_cpp_type(self.raw_type) + "& " + self.name + "();",
+                    self.forward_decl_type + "& " + self.name + "();",
                     indent)
         writeln(file, "", indent)
+
 
 # Looks for the given field type 'ftype' in the ever-widening message scopes (from inside
 # out).
