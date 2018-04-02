@@ -153,6 +153,7 @@ def decl(ctx, parent, scope):
                                 ftype, ftype,
                                 spec)
         field_ast.is_builtin = True
+        field_ast.parent = parent
     elif ctx.scanner.next() == Token.Type.Identifier:
         # 1a. take the type name, possible fully qualified.
         ftype = ctx.consume_identifier(decl.__name__).value
@@ -194,6 +195,7 @@ def decl(ctx, parent, scope):
                                 resolved_type_name,
                                 ftype,
                                 spec)
+        field_ast.parent = parent
         if type(resolved_type) is nodes.Enum:
             field_ast.is_enum = True
         else:

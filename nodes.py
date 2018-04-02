@@ -5,7 +5,10 @@ import os
 
 Filename = namedtuple('Filename', ['cc', 'h'])
 
-# Builds output file paths. It must merge 'proto_name' with 'out_path'.
+# Builds output file paths.
+#
+# TODO: need to figure out whether this function must merge path
+#   - 'proto_name' may have a common prefix with 'out_path'...
 def get_cpp_file_paths(proto_name, out_path):
     assert(out_path)
     if out_path[-1] != "/" and out_path[-1] != "\\":
@@ -17,7 +20,7 @@ def get_cpp_file_paths(proto_name, out_path):
     return Filename(out_path + ".".join(parts) + ".cc",
                     out_path + ".".join(parts) + ".h")
 
-def to_cpp_type(proto_type):
+def cpp_arg_type(proto_type):
     if proto_type == "string":
         return "const std::string&"
     elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
@@ -25,8 +28,20 @@ def to_cpp_type(proto_type):
     else:
         return proto_type.replace(".", "::")
 
+def cpp_impl_type(proto_type):
+    if proto_type == "string":
+        return "std::string"
+    elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
+        return proto_type + "_t"
+    else:
+        return proto_type.replace(".", "::")
+
 def writeln(file, line, indent = 0):
     file.write("  " * indent + line + "\n")
+
+def write_blank_if(file, collection):
+    if len(collection) > 0:
+        writeln(file, "")
 
 # Creates a new file in the specified path. The directories are created in the
 # "mkdir -p" fashion.
@@ -48,7 +63,7 @@ def open_file(path):
 class Node:
     def __init__(self):
         self.parent = None
-
+        self.fq_name = None
 
 class File(Node):
     def __init__(self, fs_path):
@@ -66,6 +81,10 @@ class File(Node):
 
     def filename(self):
         return self.path.split("/")[-1]
+
+    def cpp_include_path(self):
+        assert(self.path[-6:] == ".proto")
+        return self.path[0:-5] + "pbng.h"
 
     def as_string(self):
         assert(self.namespace)
@@ -124,31 +143,57 @@ class File(Node):
 
     def make_forward_decl_names(self):
         for _, msg in self.messages.items():
-            msg.make_forward_decl_names(to_cpp_type(self.namespace) + "::", "")
+            msg.make_forward_decl_names(cpp_arg_type(self.namespace) + "::", "")
 
     def generate(self, out_path):
         fname = get_cpp_file_paths(self.path, out_path)
-        cc_file = open_file(fname.cc)
-        h_file = open_file(fname.h)
+        self.generate_header(fname.h)
+        self.generate_source(fname.cc)
 
-        writeln(h_file, "#pragma once\n")
-        writeln(h_file, "#include <cstdint>")
-        writeln(h_file, "#include <string>\n")
+    def generate_header(self, fname):
+        file = open_file(fname)
+
+        writeln(file, "#pragma once\n")
+        writeln(file, "#include <cstdint>")
+        writeln(file, "#include <string>\n")
 
         for _, file_ast in self.imports.items():
-            file_ast.generate_forward_declarations(h_file)
+            file_ast.generate_forward_declarations(file)
 
         for ns in self.namespace.split("."):
-            writeln(h_file, "namespace " + ns + " {")
+            writeln(file, "namespace " + ns + " {")
 
+        # Top-level enums.
         for _, enum in self.enums.items():
-            enum.generate_header(h_file, 0)
+            enum.generate_header(file, 0)
+        if len(self.enums.keys()) > 0:
+            writeln(file, "")
+
+        # Messages.
+        for _, msg in self.messages.items():
+            msg.generate_header(file, self.namespace)
+
+        for ns in self.namespace.split("."):
+            writeln(file, "}  // " + ns)
+
+    def generate_source(self, fname):
+        file = open_file(fname)
+
+        # Include directives. At this point we need every generated type.
+        writeln(file, "#include <" + self.cpp_include_path() + ">")
+        for _, file_ast in self.imports.items():
+            writeln(file, "#include <" + file_ast.cpp_include_path() + ">")
+        writeln(file, "")
+
+        for ns in self.namespace.split("."):
+            writeln(file, "namespace " + ns + " {")
+        writeln(file, "")
 
         for _, msg in self.messages.items():
-            msg.generate_header(h_file, 0)
+            msg.generate_source(file, self.namespace)
 
         for ns in self.namespace.split("."):
-            writeln(h_file, "}  // " + ns)
+            writeln(file, "}  // " + ns)
 
     def generate_forward_declarations(self, file):
         if len(self.messages.keys()) == 0:
@@ -202,6 +247,16 @@ class Message(Node):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
 
+    def fq_flat_name(self, ns):
+        assert(self.fq_name)
+        parts = self.fq_name.split(".")
+        for ns_part in ns.split("."):
+            if len(parts) > 0 and parts[0] == ns_part:
+                parts.pop(0)
+            else:
+                break
+        return "_".join(parts)
+
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
@@ -251,27 +306,48 @@ class Message(Node):
 
         return None
 
-    def generate_header(self, file, indent):
-        writeln(file, "class " + self.name() + " {", indent)
+    def generate_header(self, file, ns, indent = 0):
+        # Forward declarations for sub-messages.
+        for _, sub_msg in self.messages.items():
+            writeln(file, "class " + sub_msg.fq_flat_name(ns) + ";")
+        write_blank_if(file, self.messages)
+
+        # Start the C++ class.
+        writeln(file, "class " + self.fq_flat_name(ns) + " {", indent)
         writeln(file, " public:", indent)
+
+        # Aliases for sub-messages.
+        for _, sub_msg in self.messages.items():
+            writeln(file,
+                    "using " + sub_msg.name() + " = " + sub_msg.fq_flat_name(ns) + ";",
+                    1)
+        write_blank_if(file, self.messages)
 
         # Enums
         if len(self.enums.keys()) > 0:
             writeln(file, "// Enums", indent + 1)
         for _, enum in self.enums.items():
             enum.generate_header(file, indent + 1)
-        if len(self.enums.keys()) > 0:
-            writeln(file, "", indent)
-
-        # (Sub)Messages
-        for name, sub_msg in self.messages.items():
-            sub_msg.generate_header(file, indent + 1)
+        write_blank_if(file, self.enums)
 
         # Fields
         for id, field in self.fields.items():
-            field.generate_accessor_declarations(file, indent + 1)
+            field.generate_accessor_declarations(file, ns, indent + 1)
+
+        # Implementation
+        writeln(file, " private:", indent)
+        writeln(file, "struct Representation;", indent + 1)
+        writeln(file, "Representation* rep_;", indent + 1)
 
         writeln(file, "};\n", indent)
+
+        # Sub-messages
+        #
+        # The header cannot be generated in the normal/native DFS style as C++ does not
+        # allow forward declarations Outer::Inner. So, just pre-order DFS to flatten out
+        # the tree.
+        for _, sub_msg in self.messages.items():
+            sub_msg.generate_header(file, ns)
 
     def make_forward_decl_names(self, ns, name_prefix):
         self.forward_decl_name = ns + name_prefix + self.name()
@@ -298,6 +374,27 @@ class Message(Node):
         for _, sub_msg in self.messages.items():
             sub_msg.generate_forward_declarations(file)
 
+    def generate_source(self, file, ns):
+        # Implementation
+        writeln(file, "//")
+        writeln(file, "// " + self.fq_name)
+        writeln(file, "//")
+        writeln(file, "struct " + self.fq_flat_name(ns) + "::Representation {")
+        for id, field in self.fields.items():
+            field.generate_implementation_definition(file, ns)
+        writeln(file, "};\n")
+
+        # Field accessors for the given message
+        for id, field in self.fields.items():
+            field.generate_accessor_definitions(file, ns)
+
+        # Sub-messages
+        #
+        # The header cannot be generated in the normal/native DFS style as C++ does not
+        # allow forward declarations Outer::Inner. So, just pre-order DFS to flatten out
+        # the tree.
+        for _, sub_msg in self.messages.items():
+            sub_msg.generate_source(file, ns)
 
 class Enum(Node):
     def __init__(self, fq_name):
@@ -348,6 +445,27 @@ class Field(Node):
         if specifier and specifier.value == "repeated":
             self.is_repeated = True
 
+    def flat_type_name(self, ns):
+        parts = self.fq_type.split(".")
+        for ns_part in ns.split("."):
+            if len(parts) > 0 and parts[0] == ns_part:
+                parts.pop(0)
+            else:
+                break
+        if len(parts) == 1:
+            return parts[0] # these are top-level types within this spec
+        else:
+            return "_".join(parts[0:-1]) + "::" + parts[-1]
+
+    def type_name(self, ns):
+        parts = self.fq_type.split(".")
+        for ns_part in ns.split("."):
+            if len(parts) > 0 and parts[0] == ns_part:
+                parts.pop(0)
+            else:
+                break
+        return "::".join(parts)
+
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
@@ -357,24 +475,82 @@ class Field(Node):
                 (" (enum)" if self.is_enum else "") + \
                 (" (repeated)" if self.is_repeated else "")
 
-    def generate_accessor_declarations(self, file, indent):
+    def generate_accessor_declarations(self, file, ns, indent):
         writeln(file, "// [" + str(self.id) + "] " + self.name, indent)
-        if self.is_builtin or self.is_enum:
+        if self.is_builtin:
+            # These accessors take built-in args by value.
             writeln(file,
-                    to_cpp_type(self.raw_type) + " " + self.name + "() const;",
+                    cpp_arg_type(self.raw_type) + " " + self.name + "() const;",
                     indent)
             writeln(file,
-                    "void set_" + self.name + "(" + to_cpp_type(self.raw_type) + ");",
+                    "void set_" + self.name + "(" + cpp_arg_type(self.raw_type) + ");",
+                    indent)
+        elif self.is_enum:
+            # This one must deal with scopes, but the accessors work as built-ins.
+            writeln(file,
+                    self.flat_type_name(ns) + " " + self.name + "() const;",
+                    indent)
+            writeln(file,
+                    "void set_" + self.name + "(" + self.flat_type_name(ns) + ");",
                     indent)
         else:
+            # These are sub-messages and, thus, have reference-based accessors.
             writeln(file,
                     "const " + self.forward_decl_type + "& " + self.name + "() const;",
                     indent)
             writeln(file,
                     self.forward_decl_type + "& " + self.name + "();",
                     indent)
+            writeln(file,
+                    "/* deprecated */ auto mutable_" + self.name + "() { " + \
+                        " return &" + self.name + "(); }",
+                    indent)
         writeln(file, "", indent)
 
+    def generate_accessor_definitions(self, file, ns):
+        writeln(file, "// [" + str(self.id) + "] " + self.name)
+        if self.is_builtin:
+            writeln(file,
+                    cpp_arg_type(self.raw_type) + " " \
+                        + self.parent.name() + "::" + self.name + "() const {")
+            writeln(file, "return rep_->" + self.name + ";", 1)
+            writeln(file, "}")
+            writeln(file,
+                    "void " + self.parent.name() + "::set_" + self.name + \
+                        "(" + cpp_arg_type(self.raw_type) + " val) {")
+            writeln(file, "rep_->" + self.name + " = val;", 1)
+            writeln(file, "}")
+        elif self.is_enum:
+            writeln(file,
+                    self.flat_type_name(ns) + " " \
+                        + self.parent.name() + "::" + self.name + "() const {")
+            writeln(file, "return rep_->" + self.name + ";", 1)
+            writeln(file, "}")
+            writeln(file,
+                    "void " + self.parent.name() + "::set_" + self.name + \
+                        "(" + self.flat_type_name(ns) + " val) {")
+            writeln(file, "rep_->" + self.name + " = val;", 1)
+            writeln(file, "}")
+        else:
+            writeln(file,
+                    "const " + self.parent.name()  + "::" + self.forward_decl_type + "& " + \
+                        self.parent.name() + "::" + self.name + "() const {")
+            writeln(file, "return rep_->" + self.name + ";", 1)
+            writeln(file, "}")
+            writeln(file,
+                    self.parent.name() + "::" + self.forward_decl_type + "& " + \
+                        self.parent.name() + "::" + self.name + "() {")
+            writeln(file, "return rep_->" + self.name + ";", 1)
+            writeln(file, "}")
+        writeln(file, "")
+
+    def generate_implementation_definition(self, file, ns):
+        if self.is_builtin:
+            writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + ";", 1)
+        elif self.is_enum:
+            writeln(file, self.flat_type_name(ns) + " " + self.name + ";", 1)
+        else:
+            writeln(file, self.type_name(ns) + " " + self.name + ";", 1)
 
 # Looks for the given field type 'ftype' in the ever-widening message scopes (from inside
 # out).
