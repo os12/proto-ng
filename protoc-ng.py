@@ -643,5 +643,8 @@ parser.add_argument("--with-imports", help="print AST for imported files",
 
 args = parser.parse_args()
 
-ast = parse_file(sys.argv[1])
+if not args.filename:
+    sys.exit("Missing the <filename> argument.")
+
+ast = parse_file(args.filename)
 log(1, ast.as_string())
