@@ -142,7 +142,14 @@ def decl(ctx, parent, scope):
     if ctx.scanner.next() == Token.Type.DataType:
         ftype = ctx.consume().value
         fname = ctx.consume_identifier(decl.__name__)
-        is_builtin = True
+        ctx.consume_equals(decl.__name__)
+        fid = ctx.consume_number(decl.__name__)
+
+        field_ast = ast.FieldNode(fname.value,
+                                  int(fid.value),
+                                  ftype, ftype,
+                                  spec)
+        field_ast.is_builtin = True
     elif ctx.scanner.next() == Token.Type.Identifier:
         # 1a. take the type name, possible fully qualified.
         ftype = ctx.consume_identifier(decl.__name__).value
@@ -160,7 +167,7 @@ def decl(ctx, parent, scope):
                     "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
                     ast.find_top_parent(parent).as_string())
             assert(resolved_type.name() == ftype)
-            ftype = resolved_type.fq_name
+            resolved_type_name = resolved_type.fq_name
         else:
             resolved_type = ast.find_top_parent(parent).resolve_type(ftype)
             if not resolved_type:
@@ -168,10 +175,22 @@ def decl(ctx, parent, scope):
                     "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
                     ast.find_top_parent(parent).as_string())
             assert(resolved_type.fq_name == ftype)
+            resolved_type_name = ftype
 
         # 2. take the field name
         fname = ctx.consume_identifier(decl.__name__)
-        is_builtin = False
+
+        # 3. take the rest
+        ctx.consume_equals(decl.__name__)
+        fid = ctx.consume_number(decl.__name__)
+
+        field_ast = ast.FieldNode(fname.value,
+                                  int(fid.value),
+                                  resolved_type_name,
+                                  ftype,
+                                  spec)
+        if type(resolved_type) is ast.EnumNode:
+            field_ast.is_enum = True
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
         enum(ctx, parent, scope)
@@ -179,14 +198,10 @@ def decl(ctx, parent, scope):
     else:
         ctx.throw(decl.__name__)
 
-    ctx.consume_equals(decl.__name__)
-    fid = ctx.consume_number(decl.__name__)
+
     ctx.consume_semi(decl.__name__)
-    parent.fields[int(fid.value)] = ast.FieldNode(fname.value,
-                                                  int(fid.value),
-                                                  ftype,
-                                                  is_builtin,
-                                                  spec)
+
+    parent.fields[int(fid.value)] = field_ast
     log(2, indent_from_scope(scope) + "Parsed a 'field' declaration: " + fname.value)
 
 # Grammar:
@@ -253,4 +268,4 @@ if not args.cpp_out:
 file = parse_file(args.filename)
 log(1, file.as_string())
 
-#file.generate()
+file.generate()
