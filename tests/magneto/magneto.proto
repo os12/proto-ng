@@ -33,7 +33,7 @@ message Person {
     GlobalType gtype = 4;
   }
 
-  repeated PhoneNumber phones = 4;
+  repeated PhoneNumber phone_vec = 4;
 
   // Imported messages.
   google.protobuf.Timestamp timestamp = 5;
@@ -41,5 +41,7 @@ message Person {
 }
 
 message AddressBook {
-  repeated Person people = 1;
+  repeated Person person_vec = 1;
+  repeated string x = 2;
+  repeated int32 y = 3;
 }

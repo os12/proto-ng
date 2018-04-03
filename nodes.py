@@ -161,8 +161,10 @@ class File(Node):
 
         writeln(file, "#pragma once\n")
         writeln(file, "#include <cstdint>")
-        writeln(file, "#include <memory>\n")
-        writeln(file, "#include <string>\n")
+        writeln(file, "#include <memory>")
+        writeln(file, "#include <string>")
+        writeln(file, "#include <vector>")
+        writeln(file, "")
 
         for _, file_ast in self.imports.items():
             file_ast.generate_forward_declarations(file)
@@ -328,13 +330,13 @@ class Message(Node):
         writeln(file, self.impl_cpp_type + "();", indent + 1)
         writeln(file, self.impl_cpp_type + "(const " + self.impl_cpp_type + "&);",
                 indent + 1)
-        writeln(file, self.impl_cpp_type + "(" + self.impl_cpp_type + "&&) = default;",
+        writeln(file, self.impl_cpp_type + "(" + self.impl_cpp_type + "&&);",
                 indent + 1)
         writeln(file, self.impl_cpp_type + "& " + "operator=(const " + \
             self.impl_cpp_type + "&);",
             indent + 1)
         writeln(file, self.impl_cpp_type + "& " + "operator=(" + \
-            self.impl_cpp_type + "&&) = default;",
+            self.impl_cpp_type + "&&);",
             indent + 1)
         writeln(file, "~" + self.impl_cpp_type + "();", indent + 1)
         writeln(file, "")
@@ -406,8 +408,12 @@ class Message(Node):
                 "() : rep_(std::make_unique<Representation>()) {}")
         writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
                 "(const " + self.impl_cpp_type + "& arg) : rep_(new Representation(*arg.rep_)) {}")
+        writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
+                "(" + self.impl_cpp_type + "&&) = default;")
         writeln(file, self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
                 "const " + self.impl_cpp_type + "& arg) { *rep_ = *arg.rep_; }")
+        writeln(file, self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
+                self.impl_cpp_type + "&&) = default;")
         writeln(file, self.impl_cpp_type + "::~" + self.impl_cpp_type + "() = default;")
         writeln(file, "")
 
@@ -489,10 +495,20 @@ class Field(Node):
             self.is_repeated = True
 
     def cpp_type_ref(self):
+        def repeated(type):
+            if self.is_repeated:
+                return "std::vector<" + type + ">"
+            return type
+
+        if self.is_builtin:
+            assert(not self.resolved_type)
+            return repeated(cpp_impl_type(self.raw_type))
+
+        assert(self.resolved_type)
         if self.is_fq_ref:
-            return self.resolved_type.fq_cpp_ref()
+            return repeated(self.resolved_type.fq_cpp_ref())
         else:
-            return self.resolved_type.impl_cpp_type
+            return repeated(self.resolved_type.impl_cpp_type)
 
     def initializer(self):
         assert(self.is_enum)
@@ -522,15 +538,15 @@ class Field(Node):
 
     def generate_accessor_declarations(self, file, indent):
         writeln(file, "// [" + str(self.id) + "] " + self.name, indent)
-        if self.is_builtin:
+        if self.is_builtin and not self.is_repeated:
             # These accessors take built-in args by value.
             writeln(file,
-                    cpp_arg_type(self.raw_type) + " " + self.name + "() const;",
+                    self.cpp_type_ref() + " " + self.name + "() const;",
                     indent)
             writeln(file,
-                    "void set_" + self.name + "(" + cpp_arg_type(self.raw_type) + ");",
+                    "void set_" + self.name + "(" + self.cpp_type_ref() + ");",
                     indent)
-        elif self.is_enum:
+        elif self.is_enum and not self.is_repeated:
             # This one must deal with scopes, but the accessors work as built-ins.
             writeln(file,
                     self.cpp_type_ref() + " " + self.name + "() const;",
@@ -539,7 +555,7 @@ class Field(Node):
                     "void set_" + self.name + "(" + self.cpp_type_ref() + ");",
                     indent)
         else:
-            # These are sub-messages and, thus, have reference-based accessors.
+            # These are sub-messages/containers and, thus, have reference-based accessors.
             writeln(file,
                     "const " + self.cpp_type_ref() + "& " + self.name + "() const;",
                     indent)
@@ -554,18 +570,18 @@ class Field(Node):
 
     def generate_accessor_definitions(self, file):
         writeln(file, "// [" + str(self.id) + "] " + self.name)
-        if self.is_builtin:
+        if self.is_builtin and not self.is_repeated:
             writeln(file,
-                    cpp_arg_type(self.raw_type) + " " \
+                    self.cpp_type_ref() + " " \
                         + self.parent.impl_cpp_type + "::" + self.name + "() const {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
             writeln(file,
                     "void " + self.parent.impl_cpp_type + "::set_" + self.name + \
-                        "(" + cpp_arg_type(self.raw_type) + " val) {")
+                        "(" + self.cpp_type_ref() + " val) {")
             writeln(file, "rep_->" + self.name + " = val;", 1)
             writeln(file, "}")
-        elif self.is_enum:
+        elif self.is_enum and not self.is_repeated:
             writeln(file,
                     self.cpp_type_ref() + " " \
                         + self.parent.impl_cpp_type + "::" + self.name + "() const {")
@@ -590,11 +606,11 @@ class Field(Node):
         writeln(file, "")
 
     def generate_implementation_definition(self, file):
-        if self.is_algebraic:
+        if self.is_algebraic and not self.is_repeated:
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + " = 0;", 1)
-        elif self.is_builtin:
+        elif self.is_builtin and not self.is_repeated:
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + ";", 1)
-        elif self.is_enum:
+        elif self.is_enum and not self.is_repeated:
             writeln(file, self.cpp_type_ref() + " " + self.name + " = " + \
                 self.initializer() + ";", 1)
         else:

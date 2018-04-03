@@ -2,6 +2,10 @@
 
 int main() {
   tutorial::AddressBook ab;
-  ab.people().set_email("bob@foobar");
+  {
+    tutorial::Person p;
+    p.set_email("bob@foobar");
+    ab.person_vec().push_back(std::move(p));
+  }
   return 0;
 }
