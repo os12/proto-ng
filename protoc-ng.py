@@ -32,6 +32,7 @@ def parse_file(path):
     ctx = scanner.Context(s)
     file_ast = file(ctx)
     assert(ctx.scanner.reached_eof())
+    file_ast.set_cpp_type_names()
     return file_ast
 
 # Grammar:
@@ -60,7 +61,6 @@ def statement(ctx, file_node):
 
         file = parse_file(statement_ast.path)
         log(2, "Parsed an imported file: " + file.filename())
-        file.make_forward_decl_names()
 
         file_node.imports[file.path] = file
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
@@ -69,7 +69,7 @@ def statement(ctx, file_node):
     elif keyword.type == Token.Type.Keyword and keyword.value == "message":
         message(ctx, file_node, file_node.namespace + ".")
     elif keyword.type == Token.Type.Keyword and keyword.value == "enum":
-        enum(ctx, file_node, file_node.namespace + ".")
+        enum_decl(ctx, file_node, file_node.namespace + ".")
     else:
         raise ValueError("Unexpected keyword while parsing the 'statement' rule: '" +
                 keyword.value + "'")
@@ -132,92 +132,105 @@ def decl_list(ctx, parent, scope):
         decl(ctx, parent, scope)
 
 # Grammar:
-#  <decl>     ::= [ SPECIFIER ] BUILTIN-TYPE identifier EQUALS number
-#                       [ OPEN_SQUARE DEFAULT EQUALS builtin-value CLOSE_SQUARE ]
-#                       SEMI
-#               | identifier [ DOT identifier ] identifier EQALS number SEMI
-#               | <enum>
+#  <decl>     ::= <builtin-field-decl> | <message-field-decl> | <enum-decl>
 def decl(ctx, parent, scope):
     spec = None
     if ctx.scanner.next() == Token.Type.Specifier:
         spec = ctx.consume()
 
     if ctx.scanner.next() == Token.Type.DataType:
-        ftype = ctx.consume().value
-        fname = ctx.consume_identifier(decl.__name__)
-        ctx.consume_equals(decl.__name__)
-        fid = ctx.consume_number(decl.__name__)
-
-        field_ast = nodes.Field(fname.value,
-                                int(fid.value),
-                                ftype, ftype,
-                                spec)
-        field_ast.is_builtin = True
-        field_ast.parent = parent
+        builtin_field_decl(ctx, parent, spec, scope)
     elif ctx.scanner.next() == Token.Type.Identifier:
-        # 1a. take the type name, possible fully qualified.
-        ftype = ctx.consume_identifier(decl.__name__).value
-        while ctx.scanner.next() == Token.Type.Dot:
-            ctx.consume()
-            trailer = ctx.consume_identifier(decl.__name__)
-            ftype += "." + trailer.value
-
-        # 1b. verify the type:
-        #   - unqualified reference is expanded into a fully-qualified name.
-        if ftype.count(".") == 0:
-            resolved_type = nodes.find_type(parent, ftype)
-            if not resolved_type:
-                sys.exit("Failed to resolve message type: \"" + ftype +
-                    "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                    nodes.find_top_parent(parent).as_string())
-            assert(resolved_type.name() == ftype)
-            resolved_type_name = resolved_type.fq_name
-            forward_decl_name = ftype
-        else:
-            resolved_type = nodes.find_top_parent(parent).resolve_type(ftype)
-            if not resolved_type:
-                sys.exit("Failed to resolve an FQ message type: \"" + ftype +
-                    "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                    nodes.find_top_parent(parent).as_string())
-            assert(resolved_type.fq_name == ftype)
-            resolved_type_name = ftype
-            forward_decl_name = resolved_type.forward_decl_name
-
-        # 2. take the field name
-        fname = ctx.consume_identifier(decl.__name__)
-
-        # 3. take the rest
-        ctx.consume_equals(decl.__name__)
-        fid = ctx.consume_number(decl.__name__)
-
-        field_ast = nodes.Field(fname.value,
-                                int(fid.value),
-                                resolved_type_name,
-                                ftype,
-                                spec)
-        field_ast.parent = parent
-        if type(resolved_type) is nodes.Enum:
-            field_ast.is_enum = True
-        else:
-            field_ast.forward_decl_type = forward_decl_name
+        message_field_decl(ctx, parent, spec, scope)
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
-        enum(ctx, parent, scope)
-        return
+        enum_decl(ctx, parent, scope)
     else:
         ctx.throw(decl.__name__)
+
+
+# Grammar:
+#  <builtin-field-decl> ::= [ SPECIFIER ] BUILTIN-TYPE identifier EQUALS number
+#                           [ OPEN_SQUARE DEFAULT EQUALS builtin-value CLOSE_SQUARE ]
+#                           SEMI
+
+#               | identifier [ DOT identifier ] identifier EQALS number SEMI
+#               | <enum>
+def builtin_field_decl(ctx, parent, spec, scope):
+    ftype = ctx.consume().value
+    fname = ctx.consume_identifier(decl.__name__)
+    ctx.consume_equals(decl.__name__)
+    fid = ctx.consume_number(decl.__name__)
+
+    field_ast = nodes.Field(fname.value,
+                            int(fid.value),
+                            ftype, None,
+                            spec)
+    field_ast.is_builtin = True
+    field_ast.parent = parent
 
     ctx.consume_semi(decl.__name__)
 
     parent.fields[int(fid.value)] = field_ast
-    log(2, indent_from_scope(scope) + "Parsed a 'field' declaration: " + fname.value)
+    log(2, indent_from_scope(scope) + "Parsed a built-in 'field' declaration: " + fname.value)
+
 
 # Grammar:
-#  <decl>     ::= ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
-def enum(ctx, parent, scope):
-    name = ctx.consume_identifier(enum.__name__).value
+#  <message-field-decl> ::= identifier [ DOT identifier ] identifier EQALS number SEMI
+def message_field_decl(ctx, parent, spec, scope):
+    # 1. take the type name, possible fully qualified.
+    ftype = ctx.consume_identifier(decl.__name__).value
+    while ctx.scanner.next() == Token.Type.Dot:
+        ctx.consume()
+        trailer = ctx.consume_identifier(decl.__name__)
+        ftype += "." + trailer.value
+
+    # 2. take the field name
+    fname = ctx.consume_identifier(decl.__name__)
+
+    # 3. take the rest
+    ctx.consume_equals(decl.__name__)
+    fid = ctx.consume_number(decl.__name__)
+    ctx.consume_semi(decl.__name__)
+
+    # 4. verify the reference
+    if ftype.count(".") == 0:
+        # This is a local type that's subject to the plain visibility rules.
+        resolved_type = nodes.find_type(parent, ftype)
+        if not resolved_type:
+            sys.exit("Failed to resolve message type: \"" + ftype +
+                "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
+                nodes.find_top_parent(parent).as_string())
+        assert(resolved_type.name() == ftype)
+
+        field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
+        field_ast.is_fq_ref = False
+    else:
+        # This is a fully-qualified type.
+        resolved_type = nodes.find_top_parent(parent).resolve_type(ftype)
+        if not resolved_type:
+            sys.exit("Failed to resolve an FQ message type: \"" + ftype +
+                "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
+                nodes.find_top_parent(parent).as_string())
+        assert(resolved_type.fq_name == ftype)
+
+        field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
+        field_ast.is_fq_ref = True
+
+    field_ast.parent = parent
+    if type(resolved_type) is nodes.Enum:
+        field_ast.is_enum = True
+
+    parent.fields[int(fid.value)] = field_ast
+    log(2, indent_from_scope(scope) + "Parsed a message 'field' declaration: " + fname.value)
+
+
+# Grammar:
+#  <enum-decl>     ::= ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
+def enum_decl(ctx, parent, scope):
+    name = ctx.consume_identifier(enum_decl.__name__).value
     fq_name = name
-    ctx.consume_scope_open(enum.__name__)
+    ctx.consume_scope_open(enum_decl.__name__)
     if scope:
         assert(scope[-1] == '.')
         fq_name = scope + name
@@ -227,7 +240,7 @@ def enum(ctx, parent, scope):
     log(2, indent_from_scope(fq_name) + "Parsed an 'enum' statement: " + fq_name)
 
     evalue_list(ctx, enum_ast, scope)
-    ctx.consume_scope_close(enum.__name__)
+    ctx.consume_scope_close(enum_decl.__name__)
 
 # Grammar:
 #  <evalue_list>     ::= <evalue> [ <evalue> ]

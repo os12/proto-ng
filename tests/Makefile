@@ -1,16 +1,16 @@
 PROTOC := ../protoc-ng.py
-CXX_OPTIONS := -std=c++14 -I build
+CXX_OPTIONS := -std=c++14 -I build -g
 
 all: build/test
 
 build/test: build/magneto/magneto.pbng.o build/google/protobuf/timestamp.pbng.o build/main.o
-	g++ -o build/test $?
+	g++ -o build/test $^
 
 build/main.o: main.cc
 	g++ -c $(CXX_OPTIONS) -o $@ $<
 
 build/magneto/magneto.pbng.cc: magneto/magneto.proto google/protobuf/timestamp.proto
-	$(PROTOC) -I . --cpp_out build $<
+	$(PROTOC) -I . --cpp_out build $< -v --with-imports
 build/google/protobuf/timestamp.pbng.cc: google/protobuf/timestamp.proto
 	$(PROTOC) -I . --cpp_out build $<
 

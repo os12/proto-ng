@@ -2,5 +2,6 @@
 
 int main() {
   tutorial::AddressBook ab;
+  ab.people().set_email("bob@foobar");
   return 0;
 }

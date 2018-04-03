@@ -141,9 +141,15 @@ class File(Node):
                     return t
         return None
 
-    def make_forward_decl_names(self):
+    def set_cpp_type_names(self):
+        assert(self.namespace)
+
+        for _, enum in self.enums.items():
+            enum.ns = self.namespace
+            enum.impl_cpp_type = enum.name()
+
         for _, msg in self.messages.items():
-            msg.make_forward_decl_names(cpp_arg_type(self.namespace) + "::", "")
+            msg.set_cpp_type_names("::".join(self.namespace.split(".")), "")
 
     def generate(self, out_path):
         fname = get_cpp_file_paths(self.path, out_path)
@@ -196,7 +202,7 @@ class File(Node):
             writeln(file, "}  // " + ns)
 
     def generate_forward_declarations(self, file):
-        if len(self.messages.keys()) == 0:
+        if len(self.messages) == 0:
             return
 
         writeln(file, "// Forward declarations from " + self.filename())
@@ -238,7 +244,11 @@ class Message(Node):
     def __init__(self, fq_name, parent):
         Node.__init__(self)
         self.parent = parent        # the parent Message or None
+
+        self.ns = ""
         self.fq_name = fq_name
+        self.impl_cpp_type = ""
+
         self.fields = {}
         self.enums = {}
         self.messages = {}
@@ -247,27 +257,23 @@ class Message(Node):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
 
-    def fq_flat_name(self, ns):
-        assert(self.fq_name)
-        parts = self.fq_name.split(".")
-        for ns_part in ns.split("."):
-            if len(parts) > 0 and parts[0] == ns_part:
-                parts.pop(0)
-            else:
-                break
-        return "_".join(parts)
+    def print_name(self):
+        global args
+        if args.fqdn:
+            return self.fq_name
+        else:
+            return self.name()
+
+    def fq_cpp_ref(self):
+        return self.ns + "::" + self.impl_cpp_type
 
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
         assert(namespace + "." + self.name() == self.fq_name)
 
-        s = indent_from_scope(namespace) + "Message: "
-        global args
-        if args.fqdn:
-            s += self.fq_name  + "\n"
-        else:
-            s += self.name() + "\n"
+        s = indent_from_scope(namespace) + "Message: " + self.print_name() + \
+            " // " + self.impl_cpp_type + "\n"
 
         # Fields
         for id, field in self.fields.items():
@@ -309,17 +315,17 @@ class Message(Node):
     def generate_header(self, file, ns, indent = 0):
         # Forward declarations for sub-messages.
         for _, sub_msg in self.messages.items():
-            writeln(file, "class " + sub_msg.fq_flat_name(ns) + ";")
+            writeln(file, "class " + sub_msg.impl_cpp_type + ";")
         write_blank_if(file, self.messages)
 
         # Start the C++ class.
-        writeln(file, "class " + self.fq_flat_name(ns) + " {", indent)
+        writeln(file, "class " + self.impl_cpp_type + " {", indent)
         writeln(file, " public:", indent)
 
         # Aliases for sub-messages.
         for _, sub_msg in self.messages.items():
             writeln(file,
-                    "using " + sub_msg.name() + " = " + sub_msg.fq_flat_name(ns) + ";",
+                    "using " + sub_msg.name() + " = " + sub_msg.impl_cpp_type + ";",
                     1)
         write_blank_if(file, self.messages)
 
@@ -332,7 +338,7 @@ class Message(Node):
 
         # Fields
         for id, field in self.fields.items():
-            field.generate_accessor_declarations(file, ns, indent + 1)
+            field.generate_accessor_declarations(file, indent + 1)
 
         # Implementation
         writeln(file, " private:", indent)
@@ -349,26 +355,20 @@ class Message(Node):
         for _, sub_msg in self.messages.items():
             sub_msg.generate_header(file, ns)
 
-    def make_forward_decl_names(self, ns, name_prefix):
-        self.forward_decl_name = ns + name_prefix + self.name()
+    def set_cpp_type_names(self, ns, prefix):
+        self.ns = ns
+        self.impl_cpp_type = prefix + self.name()
 
-        # Enums
-        ''' TODO - figure out what to do here
-        if len(self.enums.keys()) > 0:
-            writeln(file, "// Enums", indent + 1)
         for _, enum in self.enums.items():
-            enum.generate_header(file, indent + 1)
-        if len(self.enums.keys()) > 0:
-            writeln(file, "", indent)
-        '''
+            enum.ns = ns
+            enum.impl_cpp_type = prefix + self.name() + "::" + enum.name()
 
-        # (Sub)Messages
         for _, sub_msg in self.messages.items():
-            sub_msg.make_forward_decl_names(ns, name_prefix + self.name() + "_")
+            sub_msg.set_cpp_type_names(ns, prefix + self.name() + "_")
 
     def generate_forward_declarations(self, file):
-        assert(self.forward_decl_name)
-        writeln(file, "class " + self.forward_decl_name.split("::")[-1] + ";")
+        assert(self.impl_cpp_type)
+        writeln(file, "class " + self.impl_cpp_type.split("::")[-1] + ";")
 
         # (Sub)Messages
         for _, sub_msg in self.messages.items():
@@ -379,14 +379,14 @@ class Message(Node):
         writeln(file, "//")
         writeln(file, "// " + self.fq_name)
         writeln(file, "//")
-        writeln(file, "struct " + self.fq_flat_name(ns) + "::Representation {")
+        writeln(file, "struct " + self.impl_cpp_type + "::Representation {")
         for id, field in self.fields.items():
-            field.generate_implementation_definition(file, ns)
+            field.generate_implementation_definition(file)
         writeln(file, "};\n")
 
         # Field accessors for the given message
         for id, field in self.fields.items():
-            field.generate_accessor_definitions(file, ns)
+            field.generate_accessor_definitions(file)
 
         # Sub-messages
         #
@@ -399,27 +399,31 @@ class Message(Node):
 class Enum(Node):
     def __init__(self, fq_name):
         Node.__init__(self)
+
+        self.ns = ""
         self.fq_name = fq_name
+        self.impl_cpp_type = ""
+
         self.values = {}
 
     def name(self):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
 
+    def print_name(self):
+        global args
+        if args.fqdn:
+            return self.fq_name
+        else:
+            return self.name()
+
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
         assert(namespace + "." + self.name() == self.fq_name)
 
-        s = indent_from_scope(namespace) + "Enum: "
-
-        global args
-        if args.fqdn:
-            s += self.fq_name
-        else:
-            s += self.name()
-
-        return s + "(" + ", ".join(self.values.values()) + ")"
+        return indent_from_scope(namespace) + "Enum: " + self.print_name() + \
+            "(" + ", ".join(self.values.values()) + ") // " + self.impl_cpp_type
 
     def generate_header(self, file, indent):
         writeln(file, "enum " + self.name() + " {", indent)
@@ -431,51 +435,45 @@ class Enum(Node):
 
 
 class Field(Node):
-    def __init__(self, name, id, fq_type, raw_type, specifier):
+    def __init__(self, name, id, raw_type, resolved_type, specifier):
         Node.__init__(self)
         self.name = name
         self.id = id
-        self.fq_type = fq_type
         self.raw_type = raw_type
-        self.forward_decl_type = ""
+        self.resolved_type = resolved_type
 
         self.is_enum = False
         self.is_builtin = False
         self.is_repeated = False
+        self.is_fq_ref = False
         if specifier and specifier.value == "repeated":
             self.is_repeated = True
 
-    def flat_type_name(self, ns):
-        parts = self.fq_type.split(".")
-        for ns_part in ns.split("."):
-            if len(parts) > 0 and parts[0] == ns_part:
-                parts.pop(0)
-            else:
-                break
-        if len(parts) == 1:
-            return parts[0] # these are top-level types within this spec
+    def cpp_type_ref(self):
+        if self.is_fq_ref:
+            return self.resolved_type.fq_cpp_ref()
         else:
-            return "_".join(parts[0:-1]) + "::" + parts[-1]
-
-    def type_name(self, ns):
-        parts = self.fq_type.split(".")
-        for ns_part in ns.split("."):
-            if len(parts) > 0 and parts[0] == ns_part:
-                parts.pop(0)
-            else:
-                break
-        return "::".join(parts)
+            return self.resolved_type.impl_cpp_type
 
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
 
-        return indent_from_scope(namespace) + \
-            "[" + str(self.id) + "] " + self.name + " : " + self.fq_type + \
-                (" (enum)" if self.is_enum else "") + \
+        rv = indent_from_scope(namespace) + \
+            "[" + str(self.id) + "] " + self.name + " : "
+        if self.resolved_type:
+            global args
+            if args.fqdn:
+                rv += self.resolved_type.print_name()
+            else:
+                rv += self.raw_type
+        else:
+            rv += self.raw_type
+
+        return rv + (" (enum)" if self.is_enum else "") + \
                 (" (repeated)" if self.is_repeated else "")
 
-    def generate_accessor_declarations(self, file, ns, indent):
+    def generate_accessor_declarations(self, file, indent):
         writeln(file, "// [" + str(self.id) + "] " + self.name, indent)
         if self.is_builtin:
             # These accessors take built-in args by value.
@@ -488,18 +486,18 @@ class Field(Node):
         elif self.is_enum:
             # This one must deal with scopes, but the accessors work as built-ins.
             writeln(file,
-                    self.flat_type_name(ns) + " " + self.name + "() const;",
+                    self.cpp_type_ref() + " " + self.name + "() const;",
                     indent)
             writeln(file,
-                    "void set_" + self.name + "(" + self.flat_type_name(ns) + ");",
+                    "void set_" + self.name + "(" + self.cpp_type_ref() + ");",
                     indent)
         else:
             # These are sub-messages and, thus, have reference-based accessors.
             writeln(file,
-                    "const " + self.forward_decl_type + "& " + self.name + "() const;",
+                    "const " + self.cpp_type_ref() + "& " + self.name + "() const;",
                     indent)
             writeln(file,
-                    self.forward_decl_type + "& " + self.name + "();",
+                    self.cpp_type_ref() + "& " + self.name + "();",
                     indent)
             writeln(file,
                     "/* deprecated */ auto mutable_" + self.name + "() { " + \
@@ -507,50 +505,48 @@ class Field(Node):
                     indent)
         writeln(file, "", indent)
 
-    def generate_accessor_definitions(self, file, ns):
+    def generate_accessor_definitions(self, file):
         writeln(file, "// [" + str(self.id) + "] " + self.name)
         if self.is_builtin:
             writeln(file,
                     cpp_arg_type(self.raw_type) + " " \
-                        + self.parent.name() + "::" + self.name + "() const {")
+                        + self.parent.impl_cpp_type + "::" + self.name + "() const {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
             writeln(file,
-                    "void " + self.parent.name() + "::set_" + self.name + \
+                    "void " + self.parent.impl_cpp_type + "::set_" + self.name + \
                         "(" + cpp_arg_type(self.raw_type) + " val) {")
             writeln(file, "rep_->" + self.name + " = val;", 1)
             writeln(file, "}")
         elif self.is_enum:
             writeln(file,
-                    self.flat_type_name(ns) + " " \
-                        + self.parent.name() + "::" + self.name + "() const {")
+                    self.cpp_type_ref() + " " \
+                        + self.parent.impl_cpp_type + "::" + self.name + "() const {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
             writeln(file,
-                    "void " + self.parent.name() + "::set_" + self.name + \
-                        "(" + self.flat_type_name(ns) + " val) {")
+                    "void " + self.parent.impl_cpp_type + "::set_" + self.name + \
+                        "(" + self.cpp_type_ref() + " val) {")
             writeln(file, "rep_->" + self.name + " = val;", 1)
             writeln(file, "}")
         else:
             writeln(file,
-                    "const " + self.parent.name()  + "::" + self.forward_decl_type + "& " + \
-                        self.parent.name() + "::" + self.name + "() const {")
+                    "const " + self.cpp_type_ref() + "& " + \
+                        self.parent.impl_cpp_type + "::" + self.name + "() const {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
             writeln(file,
-                    self.parent.name() + "::" + self.forward_decl_type + "& " + \
-                        self.parent.name() + "::" + self.name + "() {")
+                    self.cpp_type_ref() + "& " + \
+                        self.parent.impl_cpp_type + "::" + self.name + "() {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
         writeln(file, "")
 
-    def generate_implementation_definition(self, file, ns):
+    def generate_implementation_definition(self, file):
         if self.is_builtin:
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + ";", 1)
-        elif self.is_enum:
-            writeln(file, self.flat_type_name(ns) + " " + self.name + ";", 1)
         else:
-            writeln(file, self.type_name(ns) + " " + self.name + ";", 1)
+            writeln(file, self.cpp_type_ref() + " " + self.name + ";", 1)
 
 # Looks for the given field type 'ftype' in the ever-widening message scopes (from inside
 # out).
