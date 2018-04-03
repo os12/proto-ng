@@ -188,6 +188,9 @@ class File(Node):
     def generate_source(self, fname):
         file = open_file(fname)
 
+        writeln(file, "#include <bitset>")
+        writeln(file, "")
+
         # Include directives. At this point we need every generated type.
         writeln(file, "#include <" + self.cpp_include_path() + ">")
         for _, file_ast in self.imports.items():
@@ -341,6 +344,13 @@ class Message(Node):
         writeln(file, "~" + self.impl_cpp_type + "();", indent + 1)
         writeln(file, "")
 
+        # Generally accessible, common API
+        writeln(file,
+                "static const " + self.impl_cpp_type + "& " + "default_instance();",
+                indent + 1)
+        writeln(file, "void Clear() { *this = default_instance(); }", indent + 1)
+        writeln(file, "")
+
         # Aliases for sub-messages
         for _, sub_msg in self.messages.items():
             writeln(file,
@@ -401,20 +411,35 @@ class Message(Node):
         writeln(file, "struct " + self.impl_cpp_type + "::Representation {")
         for id, field in self.fields.items():
             field.generate_implementation_definition(file)
+        writeln(file, "")
+        writeln(file,
+                "std::bitset<" + str(list(self.fields.keys())[-1] + 1) + "> _Presence;",
+                1)
         writeln(file, "};\n")
 
         # Construction, copying and assigment
         writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
                 "() : rep_(std::make_unique<Representation>()) {}")
-        writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
-                "(const " + self.impl_cpp_type + "& arg) : rep_(new Representation(*arg.rep_)) {}")
+        writeln(file,
+                self.impl_cpp_type + "::" + self.impl_cpp_type +
+                    "(const " + self.impl_cpp_type + "& arg) : rep_(new Representation(*arg.rep_)) {}")
         writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
                 "(" + self.impl_cpp_type + "&&) = default;")
-        writeln(file, self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
-                "const " + self.impl_cpp_type + "& arg) { *rep_ = *arg.rep_; }")
+        writeln(file,
+                self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
+                    "const " + self.impl_cpp_type + "& arg) { ")
+        writeln(file, "if (this != &arg) *rep_ = *arg.rep_;", 1)
+        writeln(file, "return *this;", 1)
+        writeln(file, "}")
         writeln(file, self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
                 self.impl_cpp_type + "&&) = default;")
         writeln(file, self.impl_cpp_type + "::~" + self.impl_cpp_type + "() = default;")
+        writeln(file, "")
+
+        writeln(file, " const " + self.impl_cpp_type + "& " + self.impl_cpp_type + "::default_instance() {")
+        writeln(file, "static " + self.impl_cpp_type + " obj;", 1)
+        writeln(file, "return obj;", 1)
+        writeln(file, "}")
         writeln(file, "")
 
         # Field accessors for the given message
@@ -570,29 +595,37 @@ class Field(Node):
                     "/* deprecated */ auto mutable_" + self.name + "() { " + \
                         " return &" + self.name + "(); }",
                     indent)
-            if self.is_repeated:
-                if self.is_builtin or self.is_enum:
-                    writeln(file,
-                            "/* deprecated */ " + \
-                                "void add_" + self.name + "(" + self.base_cpp_type_ref() + ");",
-                            indent)
-                    writeln(file,
+
+        if not self.is_repeated:
+            writeln(file, "void clear_" + self.name + "();", indent)
+
+        if self.is_repeated:
+            writeln(file,
+                    "/* deprecated */ " + "void clear_" + self.name + "() { " + \
+                        self.name + "().clear(); }",
+                    indent)
+            if self.is_builtin or self.is_enum:
+                writeln(file,
                         "/* deprecated */ " + \
-                            self.base_cpp_type_ref() + " " + self.name + "(int idx) const;",
+                            "void add_" + self.name + "(" + self.base_cpp_type_ref() + ");",
                         indent)
-                else:
-                    writeln(file,
-                            "/* deprecated */ " + \
-                                self.base_cpp_type_ref() + "* add_" + self.name + "();",
-                            indent)
-                    writeln(file,
+                writeln(file,
+                    "/* deprecated */ " + \
+                        self.base_cpp_type_ref() + " " + self.name + "(int idx) const;",
+                    indent)
+            else:
+                writeln(file,
                         "/* deprecated */ " + \
-                            self.base_cpp_type_ref() + "* mutable_" + self.name + "(int idx);",
+                            self.base_cpp_type_ref() + "* add_" + self.name + "();",
                         indent)
-                    writeln(file,
-                        "/* deprecated */ " + \
-                            "const " + self.base_cpp_type_ref() + "& " + self.name + "(int idx) const;",
-                        indent)
+                writeln(file,
+                    "/* deprecated */ " + \
+                        self.base_cpp_type_ref() + "* mutable_" + self.name + "(int idx);",
+                    indent)
+                writeln(file,
+                    "/* deprecated */ " + \
+                        "const " + self.base_cpp_type_ref() + "& " + self.name + "(int idx) const;",
+                    indent)
         writeln(file, "", indent)
 
     def generate_accessor_definitions(self, file):
@@ -607,6 +640,7 @@ class Field(Node):
                     "void " + self.parent.impl_cpp_type + "::set_" + self.name + \
                         "(" + self.cpp_type_ref() + " val) {")
             writeln(file, "rep_->" + self.name + " = val;", 1)
+            writeln(file, "rep_->_Presence.set(" + str(self.id) + ");", 1)
             writeln(file, "}")
         elif self.is_enum and not self.is_repeated:
             writeln(file,
@@ -618,6 +652,7 @@ class Field(Node):
                     "void " + self.parent.impl_cpp_type + "::set_" + self.name + \
                         "(" + self.cpp_type_ref() + " val) {")
             writeln(file, "rep_->" + self.name + " = val;", 1)
+            writeln(file, "rep_->_Presence.set(" + str(self.id) + ");", 1)
             writeln(file, "}")
         else:
             writeln(file,
@@ -628,40 +663,57 @@ class Field(Node):
             writeln(file,
                     self.cpp_type_ref() + "& " + \
                         self.parent.impl_cpp_type + "::" + self.name + "() {")
+            writeln(file, "rep_->_Presence.set(" + str(self.id) + ");", 1)
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
-            if self.is_repeated:
-                if self.is_builtin or self.is_enum:
-                    writeln(file,
-                            "/* deprecated */ void " + self.parent.impl_cpp_type + "::add_" + self.name + "(" + \
-                                self.base_cpp_type_ref() + " value) {")
-                    writeln(file, self.name + "().push_back(std::move(value));", 1)
-                    writeln(file, "}")
-                    writeln(file,
-                        "/* deprecated */ " + \
-                            self.base_cpp_type_ref() + " " + self.parent.impl_cpp_type + "::" + \
-                            self.name + "(int idx) const {")
-                    writeln(file, "return " + self.name + "().at(idx);", 1)
-                    writeln(file, "}")
-                else:
-                    writeln(file,
-                            "/* deprecated */ " + self.base_cpp_type_ref() + "* " + \
-                                self.parent.impl_cpp_type + "::add_" + self.name + "() {")
-                    writeln(file, self.name + "().push_back({});", 1)
-                    writeln(file, "return &" + self.name + "().back();", 1)
-                    writeln(file, "}")
-                    writeln(file,
-                        "/* deprecated */ " + \
-                            "const " + self.base_cpp_type_ref() + "& " + \
-                            self.parent.impl_cpp_type + "::" + self.name + "(int idx) const {")
-                    writeln(file, "return " + self.name + "().at(idx);", 1)
-                    writeln(file, "}")
-                    writeln(file,
-                        "/* deprecated */ " + \
-                            self.base_cpp_type_ref() + "* " + \
-                            self.parent.impl_cpp_type + "::mutable_" + self.name + "(int idx) {")
-                    writeln(file, "return &" + self.name + "().at(idx);", 1)
-                    writeln(file, "}")
+
+        if not self.is_repeated:
+            writeln(file,
+                    "void " + self.parent.impl_cpp_type + "::clear_" + self.name + "() {")
+
+            if self.is_algebraic:
+                writeln(file, "rep_->" + self.name + " = 0;", 1)
+            elif self.is_builtin:
+                writeln(file, "rep_->" + self.name + ".clear();", 1)
+            elif self.is_enum:
+                writeln(file, "rep_->" + self.name + " = " + self.initializer() + ";", 1)
+            else:
+                writeln(file, "rep_->" + self.name + ".Clear();", 1)
+            writeln(file, "rep_->_Presence.reset(" + str(self.id) + ");", 1)
+            writeln(file, "}")
+
+        if self.is_repeated:
+            if self.is_builtin or self.is_enum:
+                writeln(file,
+                        "/* deprecated */ void " + self.parent.impl_cpp_type + "::add_" + self.name + "(" + \
+                            self.base_cpp_type_ref() + " value) {")
+                writeln(file, self.name + "().push_back(std::move(value));", 1)
+                writeln(file, "}")
+                writeln(file,
+                    "/* deprecated */ " + \
+                        self.base_cpp_type_ref() + " " + self.parent.impl_cpp_type + "::" + \
+                        self.name + "(int idx) const {")
+                writeln(file, "return " + self.name + "().at(idx);", 1)
+                writeln(file, "}")
+            else:
+                writeln(file,
+                        "/* deprecated */ " + self.base_cpp_type_ref() + "* " + \
+                            self.parent.impl_cpp_type + "::add_" + self.name + "() {")
+                writeln(file, self.name + "().push_back({});", 1)
+                writeln(file, "return &" + self.name + "().back();", 1)
+                writeln(file, "}")
+                writeln(file,
+                    "/* deprecated */ " + \
+                        "const " + self.base_cpp_type_ref() + "& " + \
+                        self.parent.impl_cpp_type + "::" + self.name + "(int idx) const {")
+                writeln(file, "return " + self.name + "().at(idx);", 1)
+                writeln(file, "}")
+                writeln(file,
+                    "/* deprecated */ " + \
+                        self.base_cpp_type_ref() + "* " + \
+                        self.parent.impl_cpp_type + "::mutable_" + self.name + "(int idx) {")
+                writeln(file, "return &" + self.name + "().at(idx);", 1)
+                writeln(file, "}")
         writeln(file, "")
 
     def generate_implementation_definition(self, file):
