@@ -272,7 +272,7 @@ parser.add_argument('filename', metavar='filename',
 
 parser.add_argument("-v", "--verbosity", help="increase output verbosity",
                     action="count", default=0)
-parser.add_argument("--fqdn", help="print fully-qualified message and enum types in AST",
+parser.add_argument("--fq", help="print fully-qualified message and enum types in AST",
                     action='store_true')
 parser.add_argument("--with-imports", help="print AST for imported files",
                     action='store_true')

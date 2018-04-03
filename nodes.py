@@ -259,7 +259,7 @@ class Message(Node):
 
     def print_name(self):
         global args
-        if args.fqdn:
+        if args.fq:
             return self.fq_name
         else:
             return self.name()
@@ -412,7 +412,7 @@ class Enum(Node):
 
     def print_name(self):
         global args
-        if args.fqdn:
+        if args.fq:
             return self.fq_name
         else:
             return self.name()
@@ -463,7 +463,7 @@ class Field(Node):
             "[" + str(self.id) + "] " + self.name + " : "
         if self.resolved_type:
             global args
-            if args.fqdn:
+            if args.fq:
                 rv += self.resolved_type.print_name()
             else:
                 rv += self.raw_type
