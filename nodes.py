@@ -494,21 +494,25 @@ class Field(Node):
         if specifier and specifier.value == "repeated":
             self.is_repeated = True
 
+    # Returns the full type of the field's accessor respecting the "repeated" tag's presence.
     def cpp_type_ref(self):
         def repeated(type):
             if self.is_repeated:
                 return "std::vector<" + type + ">"
             return type
+        return repeated(self.base_cpp_type_ref())
 
+    # Returns the C++ type of the field disregarding the "repeated" tag's presence.
+    def base_cpp_type_ref(self):
         if self.is_builtin:
             assert(not self.resolved_type)
-            return repeated(cpp_impl_type(self.raw_type))
+            return cpp_impl_type(self.raw_type)
 
         assert(self.resolved_type)
         if self.is_fq_ref:
-            return repeated(self.resolved_type.fq_cpp_ref())
+            return self.resolved_type.fq_cpp_ref()
         else:
-            return repeated(self.resolved_type.impl_cpp_type)
+            return self.resolved_type.impl_cpp_type
 
     def initializer(self):
         assert(self.is_enum)
@@ -566,6 +570,29 @@ class Field(Node):
                     "/* deprecated */ auto mutable_" + self.name + "() { " + \
                         " return &" + self.name + "(); }",
                     indent)
+            if self.is_repeated:
+                if self.is_builtin or self.is_enum:
+                    writeln(file,
+                            "/* deprecated */ " + \
+                                "void add_" + self.name + "(" + self.base_cpp_type_ref() + ");",
+                            indent)
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            self.base_cpp_type_ref() + " " + self.name + "(int idx) const;",
+                        indent)
+                else:
+                    writeln(file,
+                            "/* deprecated */ " + \
+                                self.base_cpp_type_ref() + "* add_" + self.name + "();",
+                            indent)
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            self.base_cpp_type_ref() + "* mutable_" + self.name + "(int idx);",
+                        indent)
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            "const " + self.base_cpp_type_ref() + "& " + self.name + "(int idx) const;",
+                        indent)
         writeln(file, "", indent)
 
     def generate_accessor_definitions(self, file):
@@ -603,6 +630,38 @@ class Field(Node):
                         self.parent.impl_cpp_type + "::" + self.name + "() {")
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
+            if self.is_repeated:
+                if self.is_builtin or self.is_enum:
+                    writeln(file,
+                            "/* deprecated */ void " + self.parent.impl_cpp_type + "::add_" + self.name + "(" + \
+                                self.base_cpp_type_ref() + " value) {")
+                    writeln(file, self.name + "().push_back(std::move(value));", 1)
+                    writeln(file, "}")
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            self.base_cpp_type_ref() + " " + self.parent.impl_cpp_type + "::" + \
+                            self.name + "(int idx) const {")
+                    writeln(file, "return " + self.name + "().at(idx);", 1)
+                    writeln(file, "}")
+                else:
+                    writeln(file,
+                            "/* deprecated */ " + self.base_cpp_type_ref() + "* " + \
+                                self.parent.impl_cpp_type + "::add_" + self.name + "() {")
+                    writeln(file, self.name + "().push_back({});", 1)
+                    writeln(file, "return &" + self.name + "().back();", 1)
+                    writeln(file, "}")
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            "const " + self.base_cpp_type_ref() + "& " + \
+                            self.parent.impl_cpp_type + "::" + self.name + "(int idx) const {")
+                    writeln(file, "return " + self.name + "().at(idx);", 1)
+                    writeln(file, "}")
+                    writeln(file,
+                        "/* deprecated */ " + \
+                            self.base_cpp_type_ref() + "* " + \
+                            self.parent.impl_cpp_type + "::mutable_" + self.name + "(int idx) {")
+                    writeln(file, "return &" + self.name + "().at(idx);", 1)
+                    writeln(file, "}")
         writeln(file, "")
 
     def generate_implementation_definition(self, file):
