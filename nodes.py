@@ -161,6 +161,7 @@ class File(Node):
 
         writeln(file, "#pragma once\n")
         writeln(file, "#include <cstdint>")
+        writeln(file, "#include <memory>\n")
         writeln(file, "#include <string>\n")
 
         for _, file_ast in self.imports.items():
@@ -322,7 +323,23 @@ class Message(Node):
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
         writeln(file, " public:", indent)
 
-        # Aliases for sub-messages.
+        # Construction and assignment
+        writeln(file, "// Construction and assignment", indent + 1)
+        writeln(file, self.impl_cpp_type + "();", indent + 1)
+        writeln(file, self.impl_cpp_type + "(const " + self.impl_cpp_type + "&);",
+                indent + 1)
+        writeln(file, self.impl_cpp_type + "(" + self.impl_cpp_type + "&&) = default;",
+                indent + 1)
+        writeln(file, self.impl_cpp_type + "& " + "operator=(const " + \
+            self.impl_cpp_type + "&);",
+            indent + 1)
+        writeln(file, self.impl_cpp_type + "& " + "operator=(" + \
+            self.impl_cpp_type + "&&) = default;",
+            indent + 1)
+        writeln(file, "~" + self.impl_cpp_type + "();", indent + 1)
+        writeln(file, "")
+
+        # Aliases for sub-messages
         for _, sub_msg in self.messages.items():
             writeln(file,
                     "using " + sub_msg.name() + " = " + sub_msg.impl_cpp_type + ";",
@@ -343,7 +360,7 @@ class Message(Node):
         # Implementation
         writeln(file, " private:", indent)
         writeln(file, "struct Representation;", indent + 1)
-        writeln(file, "Representation* rep_;", indent + 1)
+        writeln(file, "std::unique_ptr<Representation> rep_;", indent + 1)
 
         writeln(file, "};\n", indent)
 
@@ -383,6 +400,16 @@ class Message(Node):
         for id, field in self.fields.items():
             field.generate_implementation_definition(file)
         writeln(file, "};\n")
+
+        # Construction, copying and assigment
+        writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
+                "() : rep_(std::make_unique<Representation>()) {}")
+        writeln(file, self.impl_cpp_type + "::" + self.impl_cpp_type +
+                "(const " + self.impl_cpp_type + "& arg) : rep_(new Representation(*arg.rep_)) {}")
+        writeln(file, self.impl_cpp_type + "& " + self.impl_cpp_type + "::operator=(" +
+                "const " + self.impl_cpp_type + "& arg) { *rep_ = *arg.rep_; }")
+        writeln(file, self.impl_cpp_type + "::~" + self.impl_cpp_type + "() = default;")
+        writeln(file, "")
 
         # Field accessors for the given message
         for id, field in self.fields.items():
