@@ -166,7 +166,6 @@ def builtin_field_decl(ctx, parent, spec, scope):
                             int(fid.value),
                             ftype, None,
                             spec)
-    field_ast.is_builtin = True
     field_ast.parent = parent
 
     ctx.consume_semi(decl.__name__)
@@ -235,6 +234,7 @@ def enum_decl(ctx, parent, scope):
         assert(scope[-1] == '.')
         fq_name = scope + name
     enum_ast = nodes.Enum(fq_name)
+    enum_ast.parent = parent
 
     parent.enums[name] = enum_ast
     log(2, indent_from_scope(fq_name) + "Parsed an 'enum' statement: " + fq_name)

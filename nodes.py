@@ -437,6 +437,10 @@ class Enum(Node):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
 
+    def initializer(self):
+        assert(0 in self.values.keys())
+        return self.values[0]
+
     def print_name(self):
         global args
         if args.fq:
@@ -470,7 +474,15 @@ class Field(Node):
         self.resolved_type = resolved_type
 
         self.is_enum = False
-        self.is_builtin = False
+        if self.raw_type in ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']:
+            self.is_builtin = True
+            self.is_algebraic = True
+        elif self.raw_type in ['string']:
+            self.is_builtin = True
+            self.is_algebraic = False
+        else:
+            self.is_builtin = False
+            self.is_algebraic = False
         self.is_repeated = False
         self.is_fq_ref = False
         if specifier and specifier.value == "repeated":
@@ -481,6 +493,14 @@ class Field(Node):
             return self.resolved_type.fq_cpp_ref()
         else:
             return self.resolved_type.impl_cpp_type
+
+    def initializer(self):
+        assert(self.is_enum)
+        if type(self.resolved_type.parent) is File:
+            return self.resolved_type.initializer()
+
+        return self.resolved_type.parent.impl_cpp_type + "::" + \
+            self.resolved_type.initializer()
 
     def as_string(self, namespace):
         assert(namespace)
@@ -570,8 +590,13 @@ class Field(Node):
         writeln(file, "")
 
     def generate_implementation_definition(self, file):
-        if self.is_builtin:
+        if self.is_algebraic:
+            writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + " = 0;", 1)
+        elif self.is_builtin:
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + ";", 1)
+        elif self.is_enum:
+            writeln(file, self.cpp_type_ref() + " " + self.name + " = " + \
+                self.initializer() + ";", 1)
         else:
             writeln(file, self.cpp_type_ref() + " " + self.name + ";", 1)
 
