@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-import nodes, scanner, sys
-import utils
+import gen, nodes, scanner, utils
+import sys
 
 from scanner import Token
 from utils import indent_from_scope, log
@@ -288,6 +288,7 @@ group.add_argument("--with-verbose-imports", help="print AST for imported files"
 args = parser.parse_args()
 utils.args = args
 nodes.args = args
+gen.args = args
 
 assert(args.filename)
 if not args.cpp_out:
