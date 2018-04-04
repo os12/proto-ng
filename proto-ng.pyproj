@@ -8,12 +8,12 @@
     <StartupFile>protoc-ng.py</StartupFile>
     <SearchPath>
     </SearchPath>
-    <WorkingDirectory>tests</WorkingDirectory>
+    <WorkingDirectory>c:\dev\proto-ng\tests</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <InterpreterId>Global|PythonCore|3.6</InterpreterId>
-    <CommandLineArguments>magneto/magneto.proto -I . --cpp_out build -v --with-imports</CommandLineArguments>
+    <CommandLineArguments>-I . --cpp_out build magneto/magneto.proto --with-verbose-import -v</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
     <Name>proto-ng</Name>
     <IsWindowsApplication>False</IsWindowsApplication>
@@ -24,6 +24,9 @@
     <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="gen.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="nodes.py">
       <SubType>Code</SubType>
     </Compile>

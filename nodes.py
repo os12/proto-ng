@@ -43,8 +43,10 @@ class Node:
         self.fq_name = None
 
 class File(Node):
-    def __init__(self, fs_path):
+    def __init__(self, fs_path, parent):
         Node.__init__(self)
+
+        self.parent = parent
         self.statements = []
         self.imports = {}
         self.options = []
@@ -67,8 +69,6 @@ class File(Node):
         return self.path[0:-5] + args.file_extension + ".h"
 
     def as_string(self):
-        assert(self.namespace)
-
         s = ""
 
         global args
@@ -76,7 +76,8 @@ class File(Node):
             for file_name, ast in self.imports.items():
                 s += ast.as_string()
 
-        s += "\nAST for " + self.filename() + ", namespace=" + self.namespace + "\n\n"
+        s += "\nAST for " + self.filename() + ", namespace=" + \
+            (self.namespace or "") + "\n\n"
 
         # Enums
         for name, enum in self.enums.items():
@@ -92,34 +93,32 @@ class File(Node):
     # resolving every segment of the type's string.
     def resolve_type(self, fq_type):
         assert(fq_type)
-        assert(self.namespace)
 
-        if fq_type[0:len(self.namespace)] == self.namespace:
-            fq_type = fq_type[len(self.namespace):]
-            parts = fq_type.split('.')
-            front = parts.pop(0) # the remaining "."
-            assert(not front)
-            front = parts.pop(0)
+        def search(self, front, parts):
             assert(front)
 
-            if front in self.enums:
-                if len(parts) == 0:
-                    return ast.enums[front]
-                return None
+            if len(parts) == 0 and front in self.enums:
+                return self.enums[front]
 
             if front in self.messages:
-                msg = self.messages[front]
-                if len(parts) == 0:
-                    return msg
-                return msg.resolve_type(".".join(parts))
-        else:
+                t = self.messages[front].resolve_type(".".join([front] + parts))
+                if t: return t
+
             for file_name, file_ast in self.imports.items():
                 # TODO: this step should check the type prefix instead of searching
                 #       blindly, but that's tricky due to variable number of segments...
-                t = file_ast.resolve_type(fq_type)
-                if t:
-                    return t
-        return None
+                t = file_ast.resolve_type(".".join([front] + parts))
+                if t: return t
+
+            return None
+
+        # First see whether this is a FQ type and take the common prefix off.
+        if self.namespace and fq_type[0:len(self.namespace) + 1] == self.namespace + ".":
+            parts = fq_type[len(self.namespace) + 1:].split('.')
+            return search(self, parts[0], parts[1:])
+
+        parts = fq_type.split(".")
+        return search(self, parts[0], parts[1:])
 
     def set_cpp_type_names(self):
         assert(self.namespace)
@@ -295,17 +294,15 @@ class Message(Node, gen.Message):
         assert(len(parts) > 0)
         front = parts.pop(0)
         assert(front)
+        assert(front == self.name())
 
-        if front in self.enums:
-            if len(parts) == 0:
-                return self.enums[ftype]
-            return None
+        if len(parts) == 0: return self
 
-        if front in self.messages:
-            msg = self.messages[front]
-            if len(parts) == 0:
-                return msg
-            return msg.resolve_type(".".join(parts))
+        if len(parts) == 1 and parts[0] in self.enums:
+            return self.enums[parts[0]]
+
+        if parts[0] in self.messages:
+            return self.messages[parts[0]].resolve_type(".".join(parts))
 
         return None
 
@@ -329,6 +326,7 @@ class Enum(Node, gen.Enum):
         self.ns = ""
         self.fq_name = fq_name
         self.values = {}
+        self.impl_cpp_type = None
 
     def name(self):
         assert(self.fq_name)
@@ -350,8 +348,11 @@ class Enum(Node, gen.Enum):
         assert(namespace[-1] != '.')
         assert(namespace + "." + self.name() == self.fq_name)
 
-        return indent_from_scope(namespace) + "Enum: " + self.print_name() + \
-            "(" + ", ".join(self.values.values()) + ") // " + self.impl_cpp_type
+        rv = indent_from_scope(namespace) + "Enum: " + self.print_name() + \
+            "(" + ", ".join(self.values.values()) + ")"
+        if self.impl_cpp_type:
+            rv += " // " + self.impl_cpp_type
+        return rv
 
 
 class Field(Node, gen.Field):
@@ -428,3 +429,9 @@ def find_top_parent(ast):
     if not ast.parent:
         return ast
     return find_top_parent(ast.parent)
+
+def find_file_parent(ast):
+    assert(ast)
+    if type(ast) == File:
+        return ast
+    return find_file_parent(ast.parent)

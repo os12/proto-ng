@@ -9,7 +9,7 @@ from utils import indent_from_scope, log
 #
 # The main parser: builds AST for a single file.
 #
-def parse_file(path):
+def parse_file(path, parent = None):
     import os.path
 
     # First fine the file. Let's start with the given path and then search
@@ -30,18 +30,18 @@ def parse_file(path):
         raise ValueError("Nothing to parse!")
 
     ctx = scanner.Context(s)
-    file_ast = file(ctx)
+    file_ast = file(ctx, parent)
     assert(ctx.scanner.reached_eof())
     file_ast.set_cpp_type_names()
     return file_ast
 
 # Grammar:
 #  <input>         ::= <statement> [ <statement> ] EOF
-def file(ctx):
+def file(ctx, parent):
     if ctx.scanner.reached_eof():
         raise ValueError("Reached EoF while parsing the 'file' rule")
 
-    file = nodes.File(ctx.scanner.file_path)
+    file = nodes.File(ctx.scanner.file_path, parent)
     while not ctx.scanner.reached_eof():
         statement(ctx, file)
 
@@ -62,7 +62,7 @@ def statement(ctx, file_node):
         statement_ast = imports(ctx)
         log(2, "Parsed an 'import' statement: " + statement_ast.path)
 
-        file = parse_file(statement_ast.path)
+        file = parse_file(statement_ast.path, file_node)
         log(2, "Parsed an imported file: " + file.filename())
 
         file_node.imports[file.path] = file
@@ -212,26 +212,28 @@ def message_field_decl(ctx, parent, spec, scope):
     fid = ctx.consume_number(decl.__name__)
     ctx.consume_semi(decl.__name__)
 
-    # 4. verify the reference
-    if ftype.count(".") == 0:
-        # This is a local type that's subject to the plain visibility rules.
-        resolved_type = nodes.find_type(parent, ftype)
-        if not resolved_type:
-            sys.exit("Failed to resolve message type: \"" + ftype +
-                "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                nodes.find_top_parent(parent).as_string())
+    # 4. verify the type reference
+    #   a) see whether this is a reference to a type within the current file
+    #      which is subject to the C++-style visibility rules.
+    resolved_type = nodes.find_type(parent, ftype)
+    if resolved_type:
         assert(resolved_type.name() == ftype)
-
         field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
         field_ast.is_fq_ref = False
     else:
-        # This is a fully-qualified type.
-        resolved_type = nodes.find_top_parent(parent).resolve_type(ftype)
+        file_node = nodes.find_file_parent(parent)
+        assert(file_node)
+        assert(type(file_node) is nodes.File)
+        assert(file_node.namespace)
+
+        # b) see whether the type lives in the same namespace but is being imported. This
+        #    type name may be partially or fully qualified.
+        resolved_type = file_node.resolve_type(ftype)
         if not resolved_type:
-            sys.exit("Failed to resolve an FQ message type: \"" + ftype +
-                "\" on line " + str(ctx.scanner.line) + "\n\n\n" +
-                nodes.find_top_parent(parent).as_string())
-        assert(resolved_type.fq_name == ftype)
+            sys.exit("Failed to resolve type: \"" + ftype + "\" in " + file_node.path + \
+                " on line " + str(ctx.scanner.line) + "\n\n\n" +
+                file_node.as_string())
+        assert(resolved_type.fq_name[-len(ftype):] == ftype)
 
         field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
         field_ast.is_fq_ref = True
