@@ -16,7 +16,7 @@ def get_cpp_file_paths(proto_name, out_path):
     parts = proto_name.split('.')
     assert(parts[-1] == "proto")
     parts.pop(-1)
-    parts.append("pbng")
+    parts.append(args.file_extension)
     return Filename(out_path + ".".join(parts) + ".cc",
                     out_path + ".".join(parts) + ".h")
 
@@ -84,7 +84,9 @@ class File(Node):
 
     def cpp_include_path(self):
         assert(self.path[-6:] == ".proto")
-        return self.path[0:-5] + "pbng.h"
+
+        global args
+        return self.path[0:-5] + args.file_extension + ".h"
 
     def as_string(self):
         assert(self.namespace)
@@ -92,7 +94,7 @@ class File(Node):
         s = ""
 
         global args
-        if args.with_imports:
+        if args.with_verbose_imports:
             for file_name, ast in self.imports.items():
                 s += ast.as_string()
 

@@ -267,6 +267,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-I', '--include', help='Include (search) directory',
                     action='append')
 parser.add_argument('--cpp_out', help='Output directory')
+parser.add_argument('--file-extension', help='File extension for the generated C++ files',
+                    default="pbng")
+
 parser.add_argument('filename', metavar='filename',
                     help='Input file name')
 
@@ -274,7 +277,7 @@ parser.add_argument("-v", "--verbosity", help="increase output verbosity",
                     action="count", default=0)
 parser.add_argument("--fq", help="print fully-qualified message and enum types in AST",
                     action='store_true')
-parser.add_argument("--with-imports", help="print AST for imported files",
+parser.add_argument("--with-verbose-imports", help="print AST for imported files",
                     action='store_true')
 
 args = parser.parse_args()

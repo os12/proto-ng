@@ -10,7 +10,7 @@ build/main.o: main.cc
 	g++ -c $(CXX_OPTIONS) -o $@ $<
 
 build/magneto/magneto.pbng.cc: magneto/magneto.proto google/protobuf/timestamp.proto
-	$(PROTOC) -I . --cpp_out build $< -v --with-imports
+	$(PROTOC) -I . --cpp_out build $<
 build/google/protobuf/timestamp.pbng.cc: google/protobuf/timestamp.proto
 	$(PROTOC) -I . --cpp_out build $<
 
