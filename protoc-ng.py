@@ -48,11 +48,14 @@ def file(ctx):
     return file
 
 # Grammar:
-#  <statement>     ::= <package> | <import> | <option> | <message> | <enum>
+#  <statement>     ::= <package> | <syntax> <import> | <option> | <message> | <enum>
 def statement(ctx, file_node):
     keyword = ctx.consume_keyword(statement.__name__)
 
-    if keyword.type == Token.Type.Keyword and keyword.value == "package":
+    if keyword.type == Token.Type.Keyword and keyword.value == "syntax":
+        file_node.syntax = syntax(ctx)
+        log(2, "Parsed a 'syntax' statement: " + file_node.syntax.syntax_id)
+    elif keyword.type == Token.Type.Keyword and keyword.value == "package":
         file_node.namespace = package(ctx).name
         log(2, "Parsed a 'package' statement: " + file_node.namespace)
     elif keyword.type == Token.Type.Keyword and keyword.value == "import":
@@ -75,6 +78,14 @@ def statement(ctx, file_node):
                 keyword.value + "'")
 
 # Grammar:
+#  <syntax>     ::= SYNTAX = string SEMI
+def syntax(ctx):
+    ctx.consume_equals(syntax.__name__)
+    syntax_id = ctx.consume_string(syntax.__name__)
+    ctx.consume_semi(syntax.__name__)
+    return nodes.Syntax(syntax_id.value)
+
+# Grammar:
 #  <package>     ::= PACKAGE [ DOT identifier ] identifier SEMI
 def package(ctx):
     name = ctx.consume_identifier(package.__name__)
@@ -93,13 +104,22 @@ def imports(ctx):
     return nodes.Import(fname.value)
 
 # Grammar:
-#  <option>     ::= OPTION identifier EQUALS string SEMI
+#  <option>     ::= OPTION identifier EQUALS (string | number | boolean) SEMI
 def option(ctx):
     name = ctx.consume_identifier(option.__name__)
     ctx.consume_equals(option.__name__)
-    value = ctx.consume_string(option.__name__)
+    if ctx.scanner.next() == Token.Type.String:
+        value_tok = ctx.consume_string(option.__name__)
+    elif ctx.scanner.next() == Token.Type.Number:
+        value_tok = ctx.consume_number(option.__name__)
+    elif ctx.scanner.next() == Token.Type.Boolean:
+        value_tok = ctx.consume_boolean(option.__name__)
+    elif ctx.scanner.next() == Token.Type.Identifier:
+        value_tok = ctx.consume_identifier(option.__name__)
+    else:
+        ctx.throw(option.__name__)
     ctx.consume_semi(option.__name__)
-    return nodes.Option(name.value, value.value)
+    return nodes.Option(name.value, value_tok.value)
 
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE

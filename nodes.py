@@ -52,6 +52,7 @@ class File(Node):
         self.enums = {}
         self.path = fs_path
         self.namespace = ""
+        self.syntax = None
 
         assert(self.path)
         assert(self.path.count('\\') == 0), "Got a Windows path: " + self.path
@@ -206,6 +207,12 @@ class File(Node):
         writeln(file, "")
 
 
+class Syntax(Node):
+    def __init__(self, syntax_id):
+        Node.__init__(self)
+        self.syntax_id = syntax_id
+
+
 class Package(Node):
     def __init__(self, name):
         Node.__init__(self)
@@ -239,6 +246,8 @@ class Message(Node, gen.Message):
         self.enums = {}
         self.messages = {}
 
+        self.impl_cpp_type = None
+
     def name(self):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
@@ -258,8 +267,10 @@ class Message(Node, gen.Message):
         assert(namespace[-1] != '.')
         assert(namespace + "." + self.name() == self.fq_name)
 
-        s = indent_from_scope(namespace) + "Message: " + self.print_name() + \
-            " // " + self.impl_cpp_type + "\n"
+        s = indent_from_scope(namespace) + "Message: " + self.print_name()
+        if self.impl_cpp_type:
+            s+= " // " + self.impl_cpp_type
+        s += "\n"
 
         # Fields
         for id, field in self.fields.items():

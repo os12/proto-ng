@@ -11,6 +11,7 @@ class Token:
 
         Keyword = 7
         Number = 8
+        Boolean = 17
 
         Equals = 9
         Semi = 10
@@ -45,14 +46,12 @@ class Scanner:
             Token.Type.Identifier, Token.Type.Specifier,
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
 
-        self.__keywords = {'package', 'import', 'option', 'message', 'enum'}
+        self.__keywords = {'package', 'syntax', 'import', 'option', 'message', 'enum'}
         tokens = [
             ("Whitespace", r'[ \t\r\n]+|//.*$'),
 
-            ("DataType", r'int32|uint32|int64|uint64|double|float|string|bool'),
-            ("Specifier", r'repeated|optional'),
-
-            ("Identifier", r'[A-Za-z][A-Za-z0-9_]*'),
+            ("DataType", r'int32|uint32|int64|uint64|double|float|string|bool|bytes'),
+            ("Specifier", r'repeated|optional|required'),
 
             ("Equals", r'='),
             ("Number", r'\d+'),
@@ -62,6 +61,9 @@ class Scanner:
             ("ScopeClose", r'}'),
             ("Semi", r';'),
             ("Dot", r'\.'),
+
+            ("Boolean", r'true|false'),
+            ("Identifier", r'[A-Za-z][A-Za-z0-9_]*'),
             ("String", r'"[^"]*"'),
         ]
 
@@ -121,8 +123,8 @@ class Context:
 
     def throw(self, rule, trailer = ""):
         raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(scanner.get()) + " on line " + str(self.scanner.line) +
-                "'." + trailer)
+                str(self.scanner.get()) + " " + self.scanner.file_path + " on line " + \
+                    str(self.scanner.line) + "'." + trailer)
 
     def consume_keyword(self, rule):
         if self.scanner.next() != Token.Type.Keyword:
@@ -145,6 +147,11 @@ class Context:
     def consume_number(self, rule):
         if self.scanner.next() != Token.Type.Number:
             self.throw(rule, " Expected a number.")
+        return self.consume()
+
+    def consume_boolean(self, rule):
+        if self.scanner.next() != Token.Type.Boolean:
+            self.throw(rule, " Expected a boolean value.")
         return self.consume()
 
     def consume_semi(self, rule):
