@@ -593,15 +593,16 @@ class Field(Node):
             writeln(file,
                     self.cpp_type_ref() + "& " + self.name + "();",
                     indent)
-            writeln(file,
-                    "/* deprecated */ auto mutable_" + self.name + "() { " + \
-                        " return &" + self.name + "(); }",
-                    indent)
+            if not args.omit_deprecated:
+                writeln(file,
+                        "/* deprecated */ auto mutable_" + self.name + "() { " + \
+                            " return &" + self.name + "(); }",
+                        indent)
 
         if not self.is_repeated:
             writeln(file, "void clear_" + self.name + "();", indent)
 
-        if self.is_repeated:
+        if self.is_repeated and not args.omit_deprecated:
             writeln(file,
                     "/* deprecated */ " + "void clear_" + self.name + "() { " + \
                         self.name + "().clear(); }",
@@ -684,7 +685,7 @@ class Field(Node):
             writeln(file, "rep_->_Presence.reset(" + str(self.id) + ");", 1)
             writeln(file, "}")
 
-        if self.is_repeated:
+        if self.is_repeated and not args.omit_deprecated:
             if self.is_builtin or self.is_enum:
                 writeln(file,
                         "/* deprecated */ void " + self.parent.impl_cpp_type + "::add_" + self.name + "(" + \

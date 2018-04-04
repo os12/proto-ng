@@ -264,30 +264,34 @@ def evalue(ctx, enum, scope):
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-I', '--include', help='Include (search) directory',
-                    action='append')
-parser.add_argument('--cpp_out', help='Output directory')
-parser.add_argument('--file-extension', help='File extension for the generated C++ files',
-                    default="pbng")
 
-parser.add_argument('filename', metavar='filename',
-                    help='Input file name')
+group = parser.add_argument_group('Mandatory arguments')
+group.add_argument('-I', '--include', help='Include (search) directory', action='append')
+group.add_argument('--cpp_out', help='Output directory')
+group.add_argument('filename', metavar='filename', help='Input file name')
 
-parser.add_argument("-v", "--verbosity", help="increase output verbosity",
-                    action="count", default=0)
-parser.add_argument("--fq", help="print fully-qualified message and enum types in AST",
-                    action='store_true')
-parser.add_argument("--with-verbose-imports", help="print AST for imported files",
-                    action='store_true')
+group = parser.add_argument_group('Code generation options')
+group.add_argument('--file-extension', help='File extension for the generated C++ files. ' +
+                   'Defaults to "pbng" (which yields <fname>.pbng.h).',
+                   default="pbng")
+group.add_argument('--omit-deprecated', help='Omit the deprectated old-school accessors.',
+                   action='store_true')
+
+group = parser.add_argument_group('Diagnostic options')
+group.add_argument("-v", "--verbosity", help="increase output verbosity",
+                   action="count", default=0)
+group.add_argument("--fq", help="print fully-qualified message and enum types in AST",
+                   action='store_true')
+group.add_argument("--with-verbose-imports", help="print AST for imported files",
+                   action='store_true')
 
 args = parser.parse_args()
 utils.args = args
 nodes.args = args
 
-if not args.filename:
-    sys.exit("Missing the <filename> argument.")
+assert(args.filename)
 if not args.cpp_out:
-    sys.exit("Missing the --cpp_out argument.")
+    sys.exit("Missing the \"--cpp_out\" argument - please provide the output directory.")
 
 file = parse_file(args.filename)
 log(1, file.as_string())
