@@ -55,21 +55,21 @@ def statement(ctx, file_node):
 
     if keyword.type == Token.Type.Keyword and keyword.value == "syntax":
         file_node.syntax = syntax(ctx)
-        log(2, "Parsed a 'syntax' statement: " + file_node.syntax.syntax_id)
+        log(2, "[parser] consumed a 'syntax' statement: " + file_node.syntax.syntax_id)
     elif keyword.type == Token.Type.Keyword and keyword.value == "package":
         file_node.namespace = package(ctx).name
-        log(2, "Parsed a 'package' statement: " + file_node.namespace)
+        log(2, "[parser] consumed a 'package' statement: " + file_node.namespace)
     elif keyword.type == Token.Type.Keyword and keyword.value == "import":
         statement_ast = imports(ctx)
-        log(2, "Parsed an 'import' statement: " + statement_ast.path)
+        log(2, "[parser] consumed an 'import' statement: " + statement_ast.path)
 
         file = parse_file(statement_ast.path, file_node)
-        log(2, "Parsed an imported file: " + file.filename())
+        log(2, "[parser] consumed an imported file: " + file.filename())
 
         file_node.imports[file.path] = file
     elif keyword.type == Token.Type.Keyword and keyword.value == "option":
         file_node.options.append(option(ctx))
-        log(2, "Parsed an 'option' statement: " + file_node.options[-1].name)
+        log(2, "[parser] consumed an 'option' statement: " + file_node.options[-1].name)
     elif keyword.type == Token.Type.Keyword and keyword.value == "message":
         message(ctx, file_node, file_node.namespace + ".")
     elif keyword.type == Token.Type.Keyword and keyword.value == "enum":
@@ -133,7 +133,7 @@ def message(ctx, parent, scope):
     ctx.consume_scope_open(message.__name__)
 
     parent.messages[msg.name()] = msg
-    log(2, indent_from_scope(fq_name) + "Parsed a 'message' : " + msg.fq_name)
+    log(2, "[parser] " + indent_from_scope(fq_name) + "consumed a 'message' : " + msg.fq_name)
 
     decl_list(ctx, msg, fq_name + ".")
     ctx.consume_scope_close(message.__name__)
@@ -210,7 +210,7 @@ def builtin_field_decl(ctx, parent, spec, scope):
     field_ast.parent = parent
 
     parent.fields[int(fid.value)] = field_ast
-    log(2, indent_from_scope(scope) + "Parsed a built-in 'field' declaration: " + fname.value)
+    log(2, "[parser] " + indent_from_scope(scope) + "consumed a built-in 'field' declaration: " + fname.value)
 
 
 # Grammar:
@@ -258,7 +258,7 @@ def message_field_decl(ctx, parent, spec, scope):
         resolved_type = file_node.resolve_type(file_node.namespace, ftype)
         if not resolved_type:
             sys.exit("Failed to resolve type: \"" + ftype + "\" in " + file_node.path + \
-                " on line " + str(ctx.scanner.line) + "\n\n\n" +
+                " on line " + str(ctx.scanner.line_num) + "\n\n\n" +
                 file_node.as_string())
         assert(resolved_type.fq_name[-len(ftype):] == ftype)
 
@@ -270,7 +270,7 @@ def message_field_decl(ctx, parent, spec, scope):
         field_ast.is_enum = True
 
     parent.fields[int(fid.value)] = field_ast
-    log(2, indent_from_scope(scope) + "Parsed a message 'field' declaration: " + fname.value)
+    log(2, "[parser] " + indent_from_scope(scope) + "consumed a message 'field' declaration: " + fname.value)
 
 
 # Grammar:
@@ -286,7 +286,7 @@ def enum_decl(ctx, parent, scope):
     enum_ast.parent = parent
 
     parent.enums[name] = enum_ast
-    log(2, indent_from_scope(fq_name) + "Parsed an 'enum' declaration: " + fq_name)
+    log(2, '[parser] ' + indent_from_scope(fq_name) + "consumed an 'enum' declaration: " + fq_name)
 
     evalue_list(ctx, enum_ast, scope)
     ctx.consume_scope_close(enum_decl.__name__)
@@ -305,14 +305,14 @@ def evalue(ctx, enum, scope):
     eid = ctx.consume_number(evalue.__name__)
     ctx.consume_semi(evalue.__name__)
     enum.values[int(eid.value)] = fname.value
-    log(2, indent_from_scope(scope) + "Parsed an enum constant: " + fname.value)
+    log(2, '[parser] ' + indent_from_scope(scope) + "consumed an enum constant: " + fname.value)
 
 # Grammar:
 #  <reserved-decl>     ::= RESERVED number SEMI
 def reserved_decl(ctx, parent, scope):
     id = int(ctx.consume_number(reserved_decl.__name__).value)
     ctx.consume_semi(reserved_decl.__name__)
-    log(2, indent_from_scope(scope) + "Parsed an 'reserved' declaration: " + str(id))
+    log(2, '[parser] ' + indent_from_scope(scope) + "consumed an 'reserved' declaration: " + str(id))
 
 
 #

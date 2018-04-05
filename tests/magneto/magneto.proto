@@ -21,6 +21,9 @@ message Person {
   }
 
   message PhoneNumber {
+    /*
+     * a C-style comment
+     */
     enum InnerPhoneType {
       MOBILE = 0;
       HOME = 1;

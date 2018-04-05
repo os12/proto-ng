@@ -27,7 +27,7 @@ class Token:
     def __init__(self, type):
         self.type = type
         self.value = ""
-        self.line = self.pos = 0
+        self.line_num = self.pos = 0
 
     def __str__(self):
         rv = "Token(" + str(self.type)
@@ -39,11 +39,10 @@ class Scanner:
     def __init__(self, file_path, flags = 0):
         import collections, re
 
-        log(1, "Opening file: " + file_path)
-        self.__file = open(file_path, "r")
+        self.__reached_eof = False
         self.__queue = []
         self.file_path = file_path
-        self.line = 0
+        self.line_num = 0
         self.non_terminals = [
             Token.Type.Identifier, Token.Type.Specifier,
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
@@ -74,12 +73,17 @@ class Scanner:
         ]
 
         tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in tokens)
-        self.__get_token = re.compile(tok_regex).match
+        self.__run_regex = re.compile(tok_regex).match
+
+        log(1, "Opening file: " + file_path)
+        self.__file = open(file_path, "r")
 
     def get(self, idx = 0):
         while idx >= len(self.__queue):
-            for token in self.__scan(self.__file.readline()):
-                log(3, "Got token: " + str(token))
+            # Consume the current logical block of input. Usually it's just one line, yet
+            # it gets longer when multi-line comments are present.
+            for token in self.__scan(lambda self : self.__file.readline()):
+                log(3, "[scanner] got token: " + str(token))
                 self.__queue.append(token)
         return self.__queue[idx]
 
@@ -94,31 +98,50 @@ class Scanner:
     def reached_eof(self):
         return self.get().type == Token.Type.EoF
 
-    def __scan(self, line):
-        if not line:
-            yield Token(Token.Type.EoF)
+    def __scan(self, read_fn):
+        pos = 0
+        input = ""
 
-        self.line += 1
-        pos = line_start = 0
+        while True:
+            line = read_fn(self)
+            if not line:
+                if pos != len(input):
+                    # We've read the entire file yet failing to get the next token. Die.
+                    raise ValueError('Unexpected character %r in %r on line %d' %
+                        (input[pos], self.file_path, self.line_num))
+                self.__reached_eof = True
+                yield Token(Token.Type.EoF)
+                if self.__reached_eof: return
+            log(3, "[scanner] read line: \"" + line[0:-1] + "\"")
 
-        mo = self.__get_token(line)
-        while mo:
-            ttype = Token.Type[mo.lastgroup]
-            if ttype != Token.Type.Whitespace:
-                val = mo.group(mo.lastgroup)
-                if ttype == Token.Type.Identifier and val in self.__keywords:
-                    ttype = Token.Type.Keyword
-                tok = Token(ttype)
-                tok.line = self.line
-                tok.pos = mo.start() - line_start
-                if ttype in self.non_terminals:
-                    tok.value = val
-                yield tok
-            pos = mo.end()
-            mo = self.__get_token(line, pos)
-        if pos != len(line):
-            raise ValueError('Unexpected character %r in %r on line %d' %
-                (line[pos], self.file_path, self.line))
+            # Exclude the trailing \n as "re" does not work properly in MULTILINE mode.
+            input += line[0:-1]
+            self.line_num += 1
+
+            match = self.__run_regex(input, pos)
+            if not match: continue
+
+            while match:
+                ttype = Token.Type[match.lastgroup]
+                if ttype != Token.Type.Whitespace:
+                    val = match.group(match.lastgroup)
+                    if ttype == Token.Type.Identifier and val in self.__keywords:
+                        ttype = Token.Type.Keyword
+                    tok = Token(ttype)
+                    tok.line = self.line_num
+                    tok.pos = match.start()
+                    if ttype in self.non_terminals:
+                        tok.value = val
+                    yield tok
+                pos = match.end()
+                match = self.__run_regex(input, pos)
+            if pos != len(input):
+                # Continue pulling data in as we may be dealing with a mutli-line thing.
+                continue
+
+            # We are done with this logical block. Generally it's just one line, except for
+            # multi-line comments.
+            break
 
 class Context:
     def __init__(self, scanner):
@@ -130,7 +153,7 @@ class Context:
     def throw(self, rule, trailer = ""):
         raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
                 str(self.scanner.get()) + " " + self.scanner.file_path + " on line " + \
-                    str(self.scanner.line) + "'." + trailer)
+                    str(self.scanner.line_num) + "'." + trailer)
 
     def consume_keyword(self, rule):
         if self.scanner.next() != Token.Type.Keyword:
