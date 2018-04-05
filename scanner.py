@@ -1,6 +1,8 @@
 from enum import Enum
 from utils import log
 
+import sys
+
 class Token:
     class Type(Enum):
         EoF = 1
@@ -23,6 +25,7 @@ class Token:
         Dot = 16
         SquareOpen = 18
         SquareClose = 19
+        Coma = 20
 
     def __init__(self, type):
         self.type = type
@@ -48,7 +51,7 @@ class Scanner:
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
 
         self.__keywords = {'package', 'syntax', 'import', 'option',
-                           'message', 'enum',
+                           'message', 'enum', 'extend',
                            'reserved', 'extensions'}
         tokens = [
             ("Whitespace", r'[ \t\r\n]+|//.*$|/\*.*\*/'),
@@ -66,6 +69,7 @@ class Scanner:
             ("ScopeClose", r'}'),
             ("Semi", r';'),
             ("Dot", r'\.'),
+            ("Coma", r','),
 
             ("Boolean", r'true|false'),
             ("Identifier", r'[A-Za-z][A-Za-z0-9_]*'),
@@ -151,8 +155,8 @@ class Context:
         return self.scanner.pop()
 
     def throw(self, rule, trailer = ""):
-        raise ValueError("Unexpected token while parsing the '" + rule + "' rule: '" +
-                str(self.scanner.get()) + " " + self.scanner.file_path + " on line " + \
+        sys.exit("Unexpected token while parsing the '" + rule.__name__ + "' rule: '" +
+                 str(self.scanner.get()) + " " + self.scanner.file_path + " on line " + \
                     str(self.scanner.line_num) + "'." + trailer)
 
     def consume_keyword(self, rule):

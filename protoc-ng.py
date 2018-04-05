@@ -51,15 +51,15 @@ def file(ctx, parent):
 #  <statement>     ::= <package> | <syntax> <import> | <option>
 #                    | <message> | <enum>
 def statement(ctx, file_node):
-    keyword = ctx.consume_keyword(statement.__name__)
+    keyword = ctx.consume_keyword(statement)
 
-    if keyword.type == Token.Type.Keyword and keyword.value == "syntax":
+    if keyword.value == "syntax":
         file_node.syntax = syntax(ctx)
         log(2, "[parser] consumed a 'syntax' statement: " + file_node.syntax.syntax_id)
-    elif keyword.type == Token.Type.Keyword and keyword.value == "package":
+    elif keyword.value == "package":
         file_node.namespace = package(ctx).name
         log(2, "[parser] consumed a 'package' statement: " + file_node.namespace)
-    elif keyword.type == Token.Type.Keyword and keyword.value == "import":
+    elif keyword.value == "import":
         statement_ast = imports(ctx)
         log(2, "[parser] consumed an 'import' statement: " + statement_ast.path)
 
@@ -67,76 +67,81 @@ def statement(ctx, file_node):
         log(2, "[parser] consumed an imported file: " + file.filename())
 
         file_node.imports[file.path] = file
-    elif keyword.type == Token.Type.Keyword and keyword.value == "option":
+    elif keyword.value == "option":
         file_node.options.append(option(ctx))
         log(2, "[parser] consumed an 'option' statement: " + file_node.options[-1].name)
-    elif keyword.type == Token.Type.Keyword and keyword.value == "message":
+    elif keyword.value == "message":
         message(ctx, file_node, file_node.namespace + ".")
-    elif keyword.type == Token.Type.Keyword and keyword.value == "enum":
+    elif keyword.value == "enum":
         enum_decl(ctx, file_node, file_node.namespace + ".")
     else:
-        raise ValueError("Unexpected keyword while parsing the 'statement' rule: '" +
-                keyword.value + "'")
+        ctx.throw(statement,
+                  " Unexpected keyword: " + keyword.value)
 
 # Grammar:
 #  <syntax>     ::= SYNTAX = string SEMI
 def syntax(ctx):
-    ctx.consume_equals(syntax.__name__)
-    syntax_id = ctx.consume_string(syntax.__name__)
-    ctx.consume_semi(syntax.__name__)
+    ctx.consume_equals(syntax)
+    syntax_id = ctx.consume_string(syntax)
+    ctx.consume_semi(syntax)
     return nodes.Syntax(syntax_id.value)
 
 # Grammar:
 #  <package>     ::= PACKAGE [ DOT identifier ] identifier SEMI
 def package(ctx):
-    name = ctx.consume_identifier(package.__name__)
+    name = ctx.consume_identifier(package)
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
-        trailer = ctx.consume_identifier(package.__name__)
+        trailer = ctx.consume_identifier(package)
         name.value += "." + trailer.value
-    ctx.consume_semi(package.__name__)
+    ctx.consume_semi(package)
     return nodes.Package(name.value)
 
 # Grammar:
 #  <import>     ::= IMPORT string SEMI
 def imports(ctx):
-    fname = ctx.consume_string(imports.__name__)
-    ctx.consume_semi(imports.__name__)
+    fname = ctx.consume_string(imports)
+    ctx.consume_semi(imports)
     return nodes.Import(fname.value)
 
 # Grammar:
 #  <option>     ::= OPTION identifier EQUALS (string | number | boolean) SEMI
 def option(ctx):
-    name = ctx.consume_identifier(option.__name__)
-    ctx.consume_equals(option.__name__)
+    name = ctx.consume_identifier(option)
+    ctx.consume_equals(option)
     if ctx.scanner.next() == Token.Type.String:
-        value_tok = ctx.consume_string(option.__name__)
+        value_tok = ctx.consume_string(option)
     elif ctx.scanner.next() == Token.Type.Number:
-        value_tok = ctx.consume_number(option.__name__)
+        value_tok = ctx.consume_number(option)
     elif ctx.scanner.next() == Token.Type.Boolean:
-        value_tok = ctx.consume_boolean(option.__name__)
+        value_tok = ctx.consume_boolean(option)
     elif ctx.scanner.next() == Token.Type.Identifier:
-        value_tok = ctx.consume_identifier(option.__name__)
+        value_tok = ctx.consume_identifier(option)
     else:
-        ctx.throw(option.__name__)
-    ctx.consume_semi(option.__name__)
+        ctx.throw(option)
+    ctx.consume_semi(option)
     return nodes.Option(name.value, value_tok.value)
 
 # Grammar:
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
 def message(ctx, parent, scope):
-    fq_name = ctx.consume_identifier(message.__name__).value
+    fq_name = ctx.consume_identifier(message).value
     if scope:
         fq_name = scope + fq_name
 
     msg = nodes.Message(fq_name, parent)
-    ctx.consume_scope_open(message.__name__)
+    ctx.consume_scope_open(message)
 
     parent.messages[msg.name()] = msg
     log(2, "[parser] " + indent_from_scope(fq_name) + "consumed a 'message' : " + msg.fq_name)
 
     decl_list(ctx, msg, fq_name + ".")
-    ctx.consume_scope_close(message.__name__)
+    ctx.consume_scope_close(message)
+
+    # protoc is accepts a SEMI here for no apparent reason.
+    if ctx.scanner.next() == Token.Type.Semi:
+        ctx.consume()
+
     return msg
 
 # Grammar:
@@ -145,7 +150,13 @@ def decl_list(ctx, parent, scope):
     while ctx.scanner.next() != Token.Type.ScopeClose:
         # Process sub-messages.
         if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "message":
-            ctx.consume_keyword(decl_list.__name__)
+            ctx.consume_keyword(decl_list)
+            message(ctx, parent, scope)
+            continue
+
+        # This is a temporary hack - there is no extension logic here yet.
+        if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extend":
+            ctx.consume_keyword(decl_list)
             message(ctx, parent, scope)
             continue
 
@@ -165,19 +176,19 @@ def decl(ctx, parent, scope):
     elif ctx.scanner.next() == Token.Type.Identifier:
         message_field_decl(ctx, parent, spec, scope)
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
-        ctx.consume_keyword(decl.__name__)
+        ctx.consume_keyword(decl)
         enum_decl(ctx, parent, scope)
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "reserved":
-        ctx.consume_keyword(decl.__name__)
+        ctx.consume_keyword(decl)
         reserved_decl(ctx, parent, scope)
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extensions":
-        ctx.consume_keyword(decl.__name__)
-        ctx.consume_number(decl.__name__)
-        ctx.consume_identifier(decl.__name__)
-        ctx.consume_identifier(decl.__name__)
-        ctx.consume_semi(decl.__name__)
+        ctx.consume_keyword(decl)
+        ctx.consume_number(decl)
+        ctx.consume_identifier(decl)
+        ctx.consume_identifier(decl)
+        ctx.consume_semi(decl)
     else:
-        ctx.throw(decl.__name__)
+        ctx.throw(decl)
 
 
 # Grammar:
@@ -189,19 +200,19 @@ def decl(ctx, parent, scope):
 #               | <enum>
 def builtin_field_decl(ctx, parent, spec, scope):
     ftype = ctx.consume().value
-    fname = ctx.consume_identifier(builtin_field_decl.__name__)
-    ctx.consume_equals(builtin_field_decl.__name__)
-    fid = ctx.consume_number(builtin_field_decl.__name__)
+    fname = ctx.consume_identifier(builtin_field_decl)
+    ctx.consume_equals(builtin_field_decl)
+    fid = ctx.consume_number(builtin_field_decl)
 
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
-        tok = ctx.consume_identifier(builtin_field_decl.__name__)
-        if tok.value != "default":
-            ctx.throw(builtin_field_decl.__name__, "Expected \"default\"")
-        ctx.consume_equals(message_field_decl.__name__)
+        tok = ctx.consume_identifier(builtin_field_decl)
+        if tok.value != "default" and tok.value != "deprecated":
+            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
+        ctx.consume_equals(message_field_decl)
         ctx.consume()
-        tok = ctx.consume_square_close(builtin_field_decl.__name__)
-    ctx.consume_semi(builtin_field_decl.__name__)
+        tok = ctx.consume_square_close(builtin_field_decl)
+    ctx.consume_semi(builtin_field_decl)
 
     field_ast = nodes.Field(fname.value,
                             int(fid.value),
@@ -217,27 +228,27 @@ def builtin_field_decl(ctx, parent, spec, scope):
 #  <message-field-decl> ::= identifier [ DOT identifier ] identifier EQALS number SEMI
 def message_field_decl(ctx, parent, spec, scope):
     # 1. take the type name, possible fully qualified.
-    ftype = ctx.consume_identifier(message_field_decl.__name__).value
+    ftype = ctx.consume_identifier(message_field_decl).value
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
-        trailer = ctx.consume_identifier(message_field_decl.__name__)
+        trailer = ctx.consume_identifier(message_field_decl)
         ftype += "." + trailer.value
 
     # 2. take the field name
-    fname = ctx.consume_identifier(message_field_decl.__name__)
+    fname = ctx.consume_identifier(message_field_decl)
 
     # 3. take the rest
-    ctx.consume_equals(message_field_decl.__name__)
-    fid = ctx.consume_number(message_field_decl.__name__)
+    ctx.consume_equals(message_field_decl)
+    fid = ctx.consume_number(message_field_decl)
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
-        tok = ctx.consume_identifier(builtin_field_decl.__name__)
+        tok = ctx.consume_identifier(builtin_field_decl)
         if tok.value != "default":
-            ctx.throw(builtin_field_decl.__name__, "Expected \"default\"")
-        ctx.consume_equals(message_field_decl.__name__)
+            ctx.throw(builtin_field_decl, "Expected \"default\"")
+        ctx.consume_equals(message_field_decl)
         ctx.consume()
-        tok = ctx.consume_square_close(builtin_field_decl.__name__)
-    ctx.consume_semi(message_field_decl.__name__)
+        tok = ctx.consume_square_close(builtin_field_decl)
+    ctx.consume_semi(message_field_decl)
 
     # 4. verify the type reference
     #   a) see whether this is a reference to a type within the current file
@@ -276,9 +287,9 @@ def message_field_decl(ctx, parent, spec, scope):
 # Grammar:
 #  <enum-decl>     ::= ENUM identifier SCOPE_OPEN <evalue-list> SCOPE_CLOSE
 def enum_decl(ctx, parent, scope):
-    name = ctx.consume_identifier(enum_decl.__name__).value
+    name = ctx.consume_identifier(enum_decl).value
     fq_name = name
-    ctx.consume_scope_open(enum_decl.__name__)
+    ctx.consume_scope_open(enum_decl)
     if scope:
         assert(scope[-1] == '.')
         fq_name = scope + name
@@ -289,7 +300,11 @@ def enum_decl(ctx, parent, scope):
     log(2, '[parser] ' + indent_from_scope(fq_name) + "consumed an 'enum' declaration: " + fq_name)
 
     evalue_list(ctx, enum_ast, scope)
-    ctx.consume_scope_close(enum_decl.__name__)
+    ctx.consume_scope_close(enum_decl)
+
+    # protoc is accepts a SEMI here for no apparent reason.
+    if ctx.scanner.next() == Token.Type.Semi:
+        ctx.consume()
 
 # Grammar:
 #  <evalue_list>     ::= <evalue> [ <evalue> ]
@@ -300,18 +315,22 @@ def evalue_list(ctx, parent, scope):
 # Grammar:
 #  <evalue>     ::= identifier EQALS number SEMI
 def evalue(ctx, enum, scope):
-    fname = ctx.consume_identifier(evalue.__name__)
-    ctx.consume_equals(evalue.__name__)
-    eid = ctx.consume_number(evalue.__name__)
-    ctx.consume_semi(evalue.__name__)
+    fname = ctx.consume_identifier(evalue)
+    ctx.consume_equals(evalue)
+    eid = ctx.consume_number(evalue)
+    ctx.consume_semi(evalue)
     enum.values[int(eid.value)] = fname.value
     log(2, '[parser] ' + indent_from_scope(scope) + "consumed an enum constant: " + fname.value)
 
 # Grammar:
-#  <reserved-decl>     ::= RESERVED number SEMI
+#  <reserved-decl>     ::= RESERVED number [COMA number ] SEMI
 def reserved_decl(ctx, parent, scope):
-    id = int(ctx.consume_number(reserved_decl.__name__).value)
-    ctx.consume_semi(reserved_decl.__name__)
+    id = int(ctx.consume_number(reserved_decl).value)
+    while ctx.scanner.next() == Token.Type.Coma:
+        ctx.consume()
+        ctx.consume_number(reserved_decl)
+    ctx.consume_semi(reserved_decl)
+
     log(2, '[parser] ' + indent_from_scope(scope) + "consumed an 'reserved' declaration: " + str(id))
 
 
