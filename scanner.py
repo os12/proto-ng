@@ -155,7 +155,7 @@ class Context:
         return self.scanner.pop()
 
     def throw(self, rule, trailer = ""):
-        sys.exit("Unexpected token while parsing the '" + rule.__name__ + "' rule: '" +
+        sys.exit("Error: unexpected token while parsing the '" + rule.__name__ + "' rule: '" +
                  str(self.scanner.get()) + " " + self.scanner.file_path + " on line " + \
                     str(self.scanner.line_num) + "'." + trailer)
 

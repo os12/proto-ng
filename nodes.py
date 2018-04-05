@@ -1,6 +1,7 @@
-from utils import indent_from_scope, writeln
+import sys
 
 import gen
+from utils import indent_from_scope, writeln, log
 
 #
 # AST nodes
@@ -98,23 +99,7 @@ class File(Node, gen.File):
             typename = typename[len(self.namespace) + 1:]
             return search(self, source_ns, typename)
 
-        '''
-        # 2. Take the common namespace prefix off the "source" and "this file's" namespace
-        # and then use it to form a fully-qualified name.
-        src_parts = source_ns.split(".")
-        dst_parts = self.namespace.split(".")
-        prefix_parts = []
-        while len(src_parts) > 0 and len(dst_parts) > 0:
-            if src_parts[0] != dst_parts[0]:
-                break
-            prefix_parts.append(src_parts.pop(0))
-            dst_parts.pop(0)
-        if len(prefix_parts) > 0:
-            t = search(self, source_ns, ".".join(prefix_parts) + "." + typename)
-            if t: return t
-        '''
-
-        # 3. Search for the typename as is.
+        # 2. Search for the typename as is.
         return search(self, source_ns, typename)
 
     def set_cpp_type_names(self):
@@ -126,6 +111,10 @@ class File(Node, gen.File):
 
         for _, msg in self.messages.items():
             msg.set_cpp_type_names("::".join(self.namespace.split(".")), "")
+
+    def verify_type_references(self):
+        for _, msg in self.messages.items():
+            msg.verify_type_references(self)
 
 
 class Syntax(Node):
@@ -239,6 +228,14 @@ class Message(Node, gen.Message):
         for _, sub_msg in self.messages.items():
             sub_msg.set_cpp_type_names(ns, prefix + self.name() + "_")
 
+    def verify_type_references(self, file):
+        # Verify each field
+        for _, field in self.fields.items():
+            field.verify_type_references(file)
+
+        # Descend into every sub-message
+        for _, sub_msg in self.messages.items():
+            sub_msg.verify_type_references(file)
 
 class Enum(Node, gen.Enum):
     def __init__(self, fq_name):
@@ -286,6 +283,7 @@ class Field(Node, gen.Field):
         self.id = id
         self.raw_type = raw_type
         self.resolved_type = resolved_type
+        self.is_forward_decl = False
 
         self.is_enum = False
         if self.raw_type in ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']:
@@ -327,6 +325,25 @@ class Field(Node, gen.Field):
 
         return rv + (" (enum)" if self.is_enum else "") + \
                 (" (repeated)" if self.is_repeated else "")
+
+    def verify_type_references(self, file_node):
+        if self.is_builtin: return
+        if self.resolved_type: return
+
+        assert(file_node)
+        assert(type(file_node) is File)
+        assert(file_node.namespace)
+
+        # b) see whether the type lives in the same namespace but is being imported. This
+        #    type name may be partially or fully qualified.
+        resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
+        if not resolved_type:
+            sys.exit("Error: failed to resolve type: \"" + self.raw_type + "\" in " + file_node.path)
+
+        assert(resolved_type.fq_name[-len(self.raw_type):] == self.raw_type)
+        self.resolved_type = resolved_type
+        log(2, "[parser] resolved a forward-declared field: " + self.name + " to " +
+            resolved_type.fq_name)
 
 
 # Looks for the given field type 'ftype' in the ever-widening message scopes (from inside

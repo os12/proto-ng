@@ -45,6 +45,9 @@ def file(ctx, parent):
     while not ctx.scanner.reached_eof():
         statement(ctx, file)
 
+    # OK, this file has been parsed, but there may be unresolved (forward) references.
+    file.verify_type_references()
+
     return file
 
 # Grammar:
@@ -267,14 +270,16 @@ def message_field_decl(ctx, parent, spec, scope):
         # b) see whether the type lives in the same namespace but is being imported. This
         #    type name may be partially or fully qualified.
         resolved_type = file_node.resolve_type(file_node.namespace, ftype)
-        if not resolved_type:
-            sys.exit("Failed to resolve type: \"" + ftype + "\" in " + file_node.path + \
-                " on line " + str(ctx.scanner.line_num) + "\n\n\n" +
-                file_node.as_string())
-        assert(resolved_type.fq_name[-len(ftype):] == ftype)
+        if resolved_type:
+            assert(resolved_type.fq_name[-len(ftype):] == ftype)
+        else:
+            assert(ftype.count(".") == 0)
+            log(1, "[parser] " + indent_from_scope(scope) + "!!! failed to resolve a local type: " +
+                ftype + ". Assuming this is a forward declaration...")
 
         field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
-        field_ast.is_fq_ref = True
+        field_ast.is_fq_ref = resolved_type != None
+        field_ast.is_forward_decl = resolved_type == None
 
     field_ast.parent = parent
     if type(resolved_type) is nodes.Enum:
@@ -368,7 +373,7 @@ gen.args = args
 
 assert(args.filename)
 if not args.cpp_out:
-    sys.exit("Missing the \"--cpp_out\" argument - please provide the output directory.")
+    sys.exit("Error: missing the \"--cpp_out\" argument - please provide the output directory.")
 
 file = parse_file(args.filename)
 log(1, file.as_string())

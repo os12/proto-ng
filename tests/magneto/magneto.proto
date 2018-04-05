@@ -48,3 +48,11 @@ message AddressBook {
   repeated string x = 2;
   repeated int32 y = 3;
 }
+
+message WithForwardRef {
+  OtherMessage member = 1;
+}
+
+message OtherMessage {
+  int32 field = 1;
+}

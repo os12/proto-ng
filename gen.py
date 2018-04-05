@@ -48,6 +48,9 @@ def cpp_impl_type(proto_type):
     else:
         return proto_type.replace(".", "::")
 
+#
+# File
+#
 class File:
     def __init__(self, *args, **kwargs):
         super(File, self).__init__(*args, **kwargs)
@@ -127,6 +130,10 @@ class File:
             writeln(file, "}  // " + ns)
         writeln(file, "")
 
+
+#
+# Enum
+#
 class Enum:
     def __init__(self, *args, **kwargs):
         super(Enum, self).__init__(*args, **kwargs)
@@ -140,6 +147,9 @@ class Enum:
         writeln(file, "};", indent)
 
 
+#
+# Message
+#
 class Message:
     def __init__(self, *args, **kwargs):
         super(Message, self).__init__(*args, **kwargs)
@@ -148,7 +158,16 @@ class Message:
         # Forward declarations for sub-messages.
         for _, sub_msg in self.messages.items():
             writeln(file, "class " + sub_msg.impl_cpp_type + ";")
-        write_blank_if(file, self.messages)
+
+        # Forward declarations for the implicitly declared (foward-declared) local messages.
+        forwards = False
+        for _, field in self.fields.items():
+            if field.is_forward_decl:
+                writeln(file, "class " + field.raw_type + ";")
+                forwards = True
+        if len(self.messages) > 0 or forwards:
+            writeln(file, "")
+
 
         # Start the C++ class.
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
@@ -271,6 +290,9 @@ class Message:
             sub_msg.generate_source(file, ns)
 
 
+#
+# Field
+#
 class Field:
     def __init__(self, *args, **kwargs):
         super(Field, self).__init__(*args, **kwargs)
