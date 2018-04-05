@@ -21,6 +21,8 @@ class Token:
         ScopeOpen = 14
         ScopeClose = 15
         Dot = 16
+        SquareOpen = 18
+        SquareClose = 19
 
     def __init__(self, type):
         self.type = type
@@ -46,17 +48,21 @@ class Scanner:
             Token.Type.Identifier, Token.Type.Specifier,
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
 
-        self.__keywords = {'package', 'syntax', 'import', 'option', 'message', 'enum'}
+        self.__keywords = {'package', 'syntax', 'import', 'option',
+                           'message', 'enum',
+                           'reserved', 'extensions'}
         tokens = [
-            ("Whitespace", r'[ \t\r\n]+|//.*$'),
+            ("Whitespace", r'[ \t\r\n]+|//.*$|/\*.*\*/'),
 
             ("DataType", r'int32|uint32|int64|uint64|double|float|string|bool|bytes'),
             ("Specifier", r'repeated|optional|required'),
 
             ("Equals", r'='),
-            ("Number", r'\d+'),
+            ("Number", r'-?\d+'),
             ("ParenOpen", r'\('),
             ("ParenClose", r'\)'),
+            ("SquareOpen", r'\['),
+            ("SquareClose", r'\]'),
             ("ScopeOpen", r'{'),
             ("ScopeClose", r'}'),
             ("Semi", r';'),
@@ -64,7 +70,7 @@ class Scanner:
 
             ("Boolean", r'true|false'),
             ("Identifier", r'[A-Za-z][A-Za-z0-9_]*'),
-            ("String", r'"[^"]*"'),
+            ("String", r'"[^"]*"|\'[^\']*\''),
         ]
 
         tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in tokens)
@@ -111,8 +117,8 @@ class Scanner:
             pos = mo.end()
             mo = self.__get_token(line, pos)
         if pos != len(line):
-            raise ValueError('Unexpected character %r on line %d' %
-                (line[pos], self.line))
+            raise ValueError('Unexpected character %r in %r on line %d' %
+                (line[pos], self.file_path, self.line))
 
 class Context:
     def __init__(self, scanner):
@@ -140,7 +146,7 @@ class Context:
         if self.scanner.next() != Token.Type.String:
             self.throw(rule, " Expected a string.")
         tok = self.consume()
-        assert(tok.value[0] == "\"" and tok.value[-1] == "\"")
+        assert(tok.value[0] == "\"" or tok.value[0] == "'")
         tok.value = tok.value[1:-1]
         return tok
 
@@ -172,4 +178,9 @@ class Context:
     def consume_scope_close(self, rule):
         if self.scanner.next() != Token.Type.ScopeClose:
             self.throw(rule, " Expected '}'.")
+        return self.consume()
+
+    def consume_square_close(self, rule):
+        if self.scanner.next() != Token.Type.SquareClose:
+            self.throw(rule, " Expected ']'.")
         return self.consume()

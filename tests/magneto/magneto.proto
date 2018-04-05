@@ -5,7 +5,7 @@ import "google/protobuf/timestamp.proto";
 option csharp_namespace = "Google.Protobuf.Examples.AddressBook";
 
 enum GlobalType {
-  A = 0;
+  A = 0; /* a comment */
   B = 1;
   C = 2;
 }

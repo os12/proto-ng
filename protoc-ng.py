@@ -48,7 +48,8 @@ def file(ctx, parent):
     return file
 
 # Grammar:
-#  <statement>     ::= <package> | <syntax> <import> | <option> | <message> | <enum>
+#  <statement>     ::= <package> | <syntax> <import> | <option>
+#                    | <message> | <enum>
 def statement(ctx, file_node):
     keyword = ctx.consume_keyword(statement.__name__)
 
@@ -153,6 +154,7 @@ def decl_list(ctx, parent, scope):
 
 # Grammar:
 #  <decl>     ::= <builtin-field-decl> | <message-field-decl> | <enum-decl>
+#               | <reserved-decl> | <extensions-decl>
 def decl(ctx, parent, scope):
     spec = None
     if ctx.scanner.next() == Token.Type.Specifier:
@@ -165,30 +167,47 @@ def decl(ctx, parent, scope):
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "enum":
         ctx.consume_keyword(decl.__name__)
         enum_decl(ctx, parent, scope)
+    elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "reserved":
+        ctx.consume_keyword(decl.__name__)
+        reserved_decl(ctx, parent, scope)
+    elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extensions":
+        ctx.consume_keyword(decl.__name__)
+        ctx.consume_number(decl.__name__)
+        ctx.consume_identifier(decl.__name__)
+        ctx.consume_identifier(decl.__name__)
+        ctx.consume_semi(decl.__name__)
     else:
         ctx.throw(decl.__name__)
 
 
 # Grammar:
 #  <builtin-field-decl> ::= [ SPECIFIER ] BUILTIN-TYPE identifier EQUALS number
-#                           [ OPEN_SQUARE DEFAULT EQUALS builtin-value CLOSE_SQUARE ]
+#                           [ SQUARE_OPEN DEFAULT EQUALS builtin-value SQUARE_CLOSE ]
 #                           SEMI
 
 #               | identifier [ DOT identifier ] identifier EQALS number SEMI
 #               | <enum>
 def builtin_field_decl(ctx, parent, spec, scope):
     ftype = ctx.consume().value
-    fname = ctx.consume_identifier(decl.__name__)
-    ctx.consume_equals(decl.__name__)
-    fid = ctx.consume_number(decl.__name__)
+    fname = ctx.consume_identifier(builtin_field_decl.__name__)
+    ctx.consume_equals(builtin_field_decl.__name__)
+    fid = ctx.consume_number(builtin_field_decl.__name__)
+
+    if ctx.scanner.next() == Token.Type.SquareOpen:
+        ctx.consume()
+        tok = ctx.consume_identifier(builtin_field_decl.__name__)
+        if tok.value != "default":
+            ctx.throw(builtin_field_decl.__name__, "Expected \"default\"")
+        ctx.consume_equals(message_field_decl.__name__)
+        ctx.consume()
+        tok = ctx.consume_square_close(builtin_field_decl.__name__)
+    ctx.consume_semi(builtin_field_decl.__name__)
 
     field_ast = nodes.Field(fname.value,
                             int(fid.value),
                             ftype, None,
                             spec)
     field_ast.parent = parent
-
-    ctx.consume_semi(decl.__name__)
 
     parent.fields[int(fid.value)] = field_ast
     log(2, indent_from_scope(scope) + "Parsed a built-in 'field' declaration: " + fname.value)
@@ -198,19 +217,27 @@ def builtin_field_decl(ctx, parent, spec, scope):
 #  <message-field-decl> ::= identifier [ DOT identifier ] identifier EQALS number SEMI
 def message_field_decl(ctx, parent, spec, scope):
     # 1. take the type name, possible fully qualified.
-    ftype = ctx.consume_identifier(decl.__name__).value
+    ftype = ctx.consume_identifier(message_field_decl.__name__).value
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
-        trailer = ctx.consume_identifier(decl.__name__)
+        trailer = ctx.consume_identifier(message_field_decl.__name__)
         ftype += "." + trailer.value
 
     # 2. take the field name
-    fname = ctx.consume_identifier(decl.__name__)
+    fname = ctx.consume_identifier(message_field_decl.__name__)
 
     # 3. take the rest
-    ctx.consume_equals(decl.__name__)
-    fid = ctx.consume_number(decl.__name__)
-    ctx.consume_semi(decl.__name__)
+    ctx.consume_equals(message_field_decl.__name__)
+    fid = ctx.consume_number(message_field_decl.__name__)
+    if ctx.scanner.next() == Token.Type.SquareOpen:
+        ctx.consume()
+        tok = ctx.consume_identifier(builtin_field_decl.__name__)
+        if tok.value != "default":
+            ctx.throw(builtin_field_decl.__name__, "Expected \"default\"")
+        ctx.consume_equals(message_field_decl.__name__)
+        ctx.consume()
+        tok = ctx.consume_square_close(builtin_field_decl.__name__)
+    ctx.consume_semi(message_field_decl.__name__)
 
     # 4. verify the type reference
     #   a) see whether this is a reference to a type within the current file
@@ -228,7 +255,7 @@ def message_field_decl(ctx, parent, spec, scope):
 
         # b) see whether the type lives in the same namespace but is being imported. This
         #    type name may be partially or fully qualified.
-        resolved_type = file_node.resolve_type(ftype)
+        resolved_type = file_node.resolve_type(file_node.namespace, ftype)
         if not resolved_type:
             sys.exit("Failed to resolve type: \"" + ftype + "\" in " + file_node.path + \
                 " on line " + str(ctx.scanner.line) + "\n\n\n" +
@@ -259,7 +286,7 @@ def enum_decl(ctx, parent, scope):
     enum_ast.parent = parent
 
     parent.enums[name] = enum_ast
-    log(2, indent_from_scope(fq_name) + "Parsed an 'enum' statement: " + fq_name)
+    log(2, indent_from_scope(fq_name) + "Parsed an 'enum' declaration: " + fq_name)
 
     evalue_list(ctx, enum_ast, scope)
     ctx.consume_scope_close(enum_decl.__name__)
@@ -279,6 +306,14 @@ def evalue(ctx, enum, scope):
     ctx.consume_semi(evalue.__name__)
     enum.values[int(eid.value)] = fname.value
     log(2, indent_from_scope(scope) + "Parsed an enum constant: " + fname.value)
+
+# Grammar:
+#  <reserved-decl>     ::= RESERVED number SEMI
+def reserved_decl(ctx, parent, scope):
+    id = int(ctx.consume_number(reserved_decl.__name__).value)
+    ctx.consume_semi(reserved_decl.__name__)
+    log(2, indent_from_scope(scope) + "Parsed an 'reserved' declaration: " + str(id))
+
 
 #
 # the main() part

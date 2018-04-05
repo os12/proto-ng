@@ -61,34 +61,61 @@ class File(Node, gen.File):
 
     # Looks for the given fully-qualified field type 'ftype' in a top->down fashion by
     # resolving every segment of the type's string.
-    def resolve_type(self, fq_type):
-        assert(fq_type)
+    def resolve_type(self, source_ns, typename):
+        assert(typename)
 
-        def search(self, front, parts):
-            assert(front)
+        def search(self, source_ns, typename):
+            parts = typename.split('.')
+            assert(len(parts) > 0)
 
-            if len(parts) == 0 and front in self.enums:
-                return self.enums[front]
+            if len(parts) == 1 and parts[0] in self.enums:
+                return self.enums[parts[0]]
 
-            if front in self.messages:
-                t = self.messages[front].resolve_type(".".join([front] + parts))
+            if parts[0] in self.messages:
+                t = self.messages[parts[0]].resolve_type(source_ns, ".".join(parts))
                 if t: return t
 
             for file_name, file_ast in self.imports.items():
-                # TODO: this step should check the type prefix instead of searching
-                #       blindly, but that's tricky due to variable number of segments...
-                t = file_ast.resolve_type(".".join([front] + parts))
+                src_parts = source_ns.split(".")
+                dst_parts = file_ast.namespace.split(".")
+                prefix_parts = []
+                while len(src_parts) > 0 and len(dst_parts) > 0:
+                    if src_parts[0] != dst_parts[0]:
+                        break
+                    prefix_parts.append(src_parts.pop(0))
+                    dst_parts.pop(0)
+                if len(prefix_parts) > 0:
+                    t = file_ast.resolve_type(source_ns, ".".join(prefix_parts) + "." + typename)
+                    if t: return t
+
+                t = file_ast.resolve_type(source_ns, ".".join(parts))
                 if t: return t
 
             return None
 
-        # First see whether this is a FQ type and take the common prefix off.
-        if self.namespace and fq_type[0:len(self.namespace) + 1] == self.namespace + ".":
-            parts = fq_type[len(self.namespace) + 1:].split('.')
-            return search(self, parts[0], parts[1:])
+        # 1. see whether this is a FQ type and take the common prefix off.
+        if self.namespace and typename[0:len(self.namespace) + 1] == self.namespace + ".":
+            typename = typename[len(self.namespace) + 1:]
+            return search(self, source_ns, typename)
 
-        parts = fq_type.split(".")
-        return search(self, parts[0], parts[1:])
+        '''
+        # 2. Take the common namespace prefix off the "source" and "this file's" namespace
+        # and then use it to form a fully-qualified name.
+        src_parts = source_ns.split(".")
+        dst_parts = self.namespace.split(".")
+        prefix_parts = []
+        while len(src_parts) > 0 and len(dst_parts) > 0:
+            if src_parts[0] != dst_parts[0]:
+                break
+            prefix_parts.append(src_parts.pop(0))
+            dst_parts.pop(0)
+        if len(prefix_parts) > 0:
+            t = search(self, source_ns, ".".join(prefix_parts) + "." + typename)
+            if t: return t
+        '''
+
+        # 3. Search for the typename as is.
+        return search(self, source_ns, typename)
 
     def set_cpp_type_names(self):
         assert(self.namespace)
@@ -182,7 +209,7 @@ class Message(Node, gen.Message):
 
     # Looks for the given fully-qualified field type 'ftype' in a top->down fashion by
     # resolving every segment of the type's string.
-    def resolve_type(self, fq_type):
+    def resolve_type(self, source_ns, fq_type):
         assert(fq_type)
 
         parts = fq_type.split('.')
@@ -197,7 +224,7 @@ class Message(Node, gen.Message):
             return self.enums[parts[0]]
 
         if parts[0] in self.messages:
-            return self.messages[parts[0]].resolve_type(".".join(parts))
+            return self.messages[parts[0]].resolve_type(source_ns, ".".join(parts))
 
         return None
 
