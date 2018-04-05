@@ -1,37 +1,6 @@
-from collections import namedtuple
 from utils import indent_from_scope, writeln
 
-import gen, os
-
-Filename = namedtuple('Filename', ['cc', 'h'])
-
-# Builds output file paths.
-#
-# TODO: need to figure out whether this function must merge path
-#   - 'proto_name' may have a common prefix with 'out_path'...
-def get_cpp_file_paths(proto_name, out_path):
-    assert(out_path)
-    if out_path[-1] != "/" and out_path[-1] != "\\":
-        out_path += "/"
-    parts = proto_name.split('.')
-    assert(parts[-1] == "proto")
-    parts.pop(-1)
-    parts.append(args.file_extension)
-    return Filename(out_path + ".".join(parts) + ".cc",
-                    out_path + ".".join(parts) + ".h")
-
-# Creates a new file in the specified path. The directories are created in the
-# "mkdir -p" fashion.
-def open_file(path):
-    assert(path.count('\\') == 0)
-
-    dir_list = path.split('/')[0:-1]
-    dir = "/".join(dir_list)
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    assert(os.path.exists(dir))
-
-    return open(path, "w")
+import gen
 
 #
 # AST nodes
@@ -42,9 +11,10 @@ class Node:
         self.parent = None
         self.fq_name = None
 
-class File(Node):
+class File(Node, gen.File):
     def __init__(self, fs_path, parent):
         Node.__init__(self)
+        gen.File.__init__(self)
 
         self.parent = parent
         self.statements = []
@@ -129,81 +99,6 @@ class File(Node):
 
         for _, msg in self.messages.items():
             msg.set_cpp_type_names("::".join(self.namespace.split(".")), "")
-
-    def generate(self, out_path):
-        fname = get_cpp_file_paths(self.path, out_path)
-        self.generate_header(fname.h)
-        self.generate_source(fname.cc)
-
-    def generate_header(self, fname):
-        file = open_file(fname)
-
-        writeln(file, "#pragma once\n")
-        writeln(file, "#include <cstdint>")
-        writeln(file, "#include <memory>")
-        writeln(file, "#include <string>")
-        writeln(file, "#include <vector>")
-        writeln(file, "")
-
-        for _, file_ast in self.imports.items():
-            file_ast.generate_forward_declarations(file)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "namespace " + ns + " {")
-
-        # Top-level enums.
-        for _, enum in self.enums.items():
-            enum.generate_header(file, 0)
-        if len(self.enums.keys()) > 0:
-            writeln(file, "")
-
-        # Messages.
-        for _, msg in self.messages.items():
-            msg.generate_header(file, self.namespace)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "}  // " + ns)
-
-    def generate_source(self, fname):
-        file = open_file(fname)
-
-        writeln(file, "#include <bitset>")
-        writeln(file, "")
-
-        # Include directives. At this point we need every generated type.
-        writeln(file, "#include <" + self.cpp_include_path() + ">")
-        for _, file_ast in self.imports.items():
-            writeln(file, "#include <" + file_ast.cpp_include_path() + ">")
-        writeln(file, "")
-
-        for ns in self.namespace.split("."):
-            writeln(file, "namespace " + ns + " {")
-        writeln(file, "")
-
-        for _, msg in self.messages.items():
-            msg.generate_source(file, self.namespace)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "}  // " + ns)
-
-    def generate_forward_declarations(self, file):
-        if len(self.messages) == 0:
-            return
-
-        writeln(file, "// Forward declarations from " + self.filename())
-        for ns in self.namespace.split("."):
-            writeln(file, "namespace " + ns + " {")
-
-        '''TODO: how do I deal with enums?'''
-        #for _, enum in self.enums.items():
-        #    enum.generate_header(file, 0)
-
-        for _, msg in self.messages.items():
-            msg.generate_forward_declarations(file)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "}  // " + ns)
-        writeln(file, "")
 
 
 class Syntax(Node):
