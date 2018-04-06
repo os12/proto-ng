@@ -53,6 +53,7 @@ def file(ctx, parent):
 # Grammar:
 #  <statement>     ::= <package> | <syntax> <import> | <option>
 #                    | <message> | <enum>
+#                    | <extend>
 def statement(ctx, file_node):
     keyword = ctx.consume_keyword(statement)
 
@@ -77,6 +78,8 @@ def statement(ctx, file_node):
         message(ctx, file_node, file_node.namespace + ".")
     elif keyword.value == "enum":
         enum_decl(ctx, file_node, file_node.namespace + ".")
+    elif keyword.value == "extend":
+        extend(ctx, file_node)
     else:
         ctx.throw(statement,
                   " Unexpected keyword: " + keyword.value)
@@ -338,6 +341,29 @@ def reserved_decl(ctx, parent, scope):
 
     log(2, '[parser] ' + indent_from_scope(scope) + "consumed an 'reserved' declaration: " + str(id))
 
+# Grammar:
+#  <extend>     ::= identifier [ DOT identifier ] SCOPE_OPEN decl_list SCOPE_CLOSE
+def extend(ctx, parent):
+    fq_name = ctx.consume_identifier(message).value
+    while ctx.scanner.next() == Token.Type.Dot:
+        ctx.consume()
+        trailer = ctx.consume_identifier(package)
+        fq_name += "." + trailer.value
+
+    msg = nodes.Message(fq_name, parent)
+    ctx.consume_scope_open(message)
+
+    parent.extends[msg.name()] = msg
+    log(2, "[parser] consumed an 'extend' : " + msg.fq_name)
+
+    decl_list(ctx, msg, fq_name + ".")
+    ctx.consume_scope_close(message)
+
+    # protoc is accepts a SEMI here for no apparent reason.
+    if ctx.scanner.next() == Token.Type.Semi:
+        ctx.consume()
+
+    return msg
 
 #
 # the main() part

@@ -22,6 +22,7 @@ class File(Node, gen.File):
         self.imports = {}
         self.options = []
         self.messages = {}
+        self.extends = {}
         self.enums = {}
         self.path = fs_path
         self.namespace = ""
@@ -54,8 +55,10 @@ class File(Node, gen.File):
         for name, enum in self.enums.items():
             s += enum.as_string(self.namespace) + "\n"
 
-        # Messages
+        # Messages/extends
         for name, msg in self.messages.items():
+            s += msg.as_string(self.namespace)
+        for name, msg in self.extends.items():
             s += msg.as_string(self.namespace)
 
         return s
@@ -289,7 +292,7 @@ class Field(Node, gen.Field):
         if self.raw_type in ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']:
             self.is_builtin = True
             self.is_algebraic = True
-        elif self.raw_type in ['string']:
+        elif self.raw_type in ['string', 'bytes']:
             self.is_builtin = True
             self.is_algebraic = False
         else:

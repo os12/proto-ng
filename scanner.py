@@ -111,7 +111,7 @@ class Scanner:
             if not line:
                 if pos != len(input):
                     # We've read the entire file yet failing to get the next token. Die.
-                    raise ValueError('Unexpected character %r in %r on line %d' %
+                    sys.exit('Unexpected character %r in %r on line %d' %
                         (input[pos], self.file_path, self.line_num))
                 self.__reached_eof = True
                 yield Token(Token.Type.EoF)
@@ -165,9 +165,16 @@ class Context:
         return self.consume()
 
     def consume_identifier(self, rule):
-        if self.scanner.next() != Token.Type.Identifier:
-            self.throw(rule, " Expected an identifier.")
-        return self.consume()
+        if self.scanner.next() == Token.Type.Identifier:
+            return self.consume()
+
+        # Keywords are actually valid identifiers too :)
+        if self.scanner.next() == Token.Type.Keyword:
+            tok = self.consume()
+            tok.type = Token.Type.Identifier
+            return tok
+
+        self.throw(rule, " Expected an identifier.")
 
     def consume_string(self, rule):
         if self.scanner.next() != Token.Type.String:
