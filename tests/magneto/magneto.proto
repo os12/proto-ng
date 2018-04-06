@@ -59,4 +59,5 @@ message WithForwardRef {
 
 message OtherMessage {
   int32 field = 1;
+  repeated string required_feature_vec = 42;
 }

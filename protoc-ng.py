@@ -289,8 +289,8 @@ def message_field_decl(ctx, parent, spec, scope):
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
         tok = ctx.consume_identifier(builtin_field_decl)
-        if tok.value != "default":
-            ctx.throw(builtin_field_decl, "Expected \"default\"")
+        if not tok.value in ["default", "deprecated"]:
+            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
         ctx.consume_equals(message_field_decl)
         ctx.consume()
         tok = ctx.consume_square_close(builtin_field_decl)
@@ -316,7 +316,6 @@ def message_field_decl(ctx, parent, spec, scope):
         if resolved_type:
             assert(resolved_type.fq_name[-len(ftype):] == ftype)
         else:
-            assert(ftype.count(".") == 0)
             log(1, "[parser] " + indent_from_scope(scope) + "!!! failed to resolve a local type: " +
                 ftype + ". Assuming this is a forward declaration...")
 

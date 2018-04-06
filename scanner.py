@@ -41,6 +41,13 @@ class Token:
         return rv + ")"
 
 class Scanner:
+    keywords = {'package', 'syntax', 'import', 'option',
+                           'message', 'enum', 'extend',
+                           'reserved', 'extensions'}
+    data_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'string', 'bool',
+                 'bytes']
+    specifiers = ['repeated', 'optional', 'required', 'map']
+
     def __init__(self, file_path, flags = 0):
         import collections, re
 
@@ -52,14 +59,8 @@ class Scanner:
             Token.Type.Identifier, Token.Type.Specifier,
             Token.Type.Keyword, Token.Type.DataType, Token.Type.Number, Token.Type.String]
 
-        self.__keywords = {'package', 'syntax', 'import', 'option',
-                           'message', 'enum', 'extend',
-                           'reserved', 'extensions'}
         tokens = [
             ("Whitespace", r'[ \t\r\n]+|//.*$|/\*.*\*/'),
-
-            ("DataType", r'int32|uint32|int64|uint64|double|float|string|bool|bytes'),
-            ("Specifier", r'repeated|optional|required|map'),
 
             ("Equals", r'='),
             ("Number", r'-?\d+'),
@@ -127,14 +128,21 @@ class Scanner:
             self.line_num += 1
 
             match = self.__run_regex(input, pos)
-            if not match: continue
+            if not match:
+                if len(input) > 1000:
+                    sys.exit("Scanner: fatal error on this input:\n\t" + input[pos:50])
+                continue
 
             while match:
                 ttype = Token.Type[match.lastgroup]
                 if ttype != Token.Type.Whitespace:
                     val = match.group(match.lastgroup)
-                    if ttype == Token.Type.Identifier and val in self.__keywords:
+                    if ttype == Token.Type.Identifier and val in Scanner.keywords:
                         ttype = Token.Type.Keyword
+                    elif ttype == Token.Type.Identifier and val in Scanner.data_types:
+                        ttype = Token.Type.DataType
+                    elif ttype == Token.Type.Identifier and val in Scanner.specifiers:
+                        ttype = Token.Type.Specifier
                     tok = Token(ttype)
                     tok.line = self.line_num
                     tok.pos = match.start()
