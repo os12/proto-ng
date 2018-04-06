@@ -278,7 +278,10 @@ class Enum(Node, gen.Enum):
 
 
 class Field(Node, gen.Field):
-    def __init__(self, name, id, raw_type, resolved_type, specifier):
+    algebraic_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']
+    string_types = ['string', 'bytes']
+
+    def __init__(self, name, id, raw_type, resolved_type, specifier, mapped_type = None):
         Node.__init__(self)
         gen.Field.__init__(self)
 
@@ -287,12 +290,14 @@ class Field(Node, gen.Field):
         self.raw_type = raw_type
         self.resolved_type = resolved_type
         self.is_forward_decl = False
+        self.is_map = False
+        self.is_repeated = False
 
         self.is_enum = False
-        if self.raw_type in ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']:
+        if self.raw_type in Field.algebraic_types:
             self.is_builtin = True
             self.is_algebraic = True
-        elif self.raw_type in ['string', 'bytes']:
+        elif self.raw_type in Field.string_types:
             self.is_builtin = True
             self.is_algebraic = False
         else:
@@ -300,8 +305,16 @@ class Field(Node, gen.Field):
             self.is_algebraic = False
         self.is_repeated = False
         self.is_fq_ref = False
-        if specifier and specifier.value == "repeated":
+        if specifier == "repeated":
             self.is_repeated = True
+        elif specifier == "map":
+            self.is_map = True
+            assert(mapped_type)
+            self.mapped_type = mapped_type
+            self.is_builtin = False
+
+    def is_container(self):
+        return self.is_repeated or self.is_map
 
     def initializer(self):
         assert(self.is_enum)
@@ -312,22 +325,36 @@ class Field(Node, gen.Field):
             self.resolved_type.initializer()
 
     def as_string(self, namespace):
+        global args
+
         assert(namespace)
         assert(namespace[-1] != '.')
 
         rv = indent_from_scope(namespace) + \
             "[" + str(self.id) + "] " + self.name + " : "
-        if self.resolved_type:
-            global args
-            if args.fq:
-                rv += self.resolved_type.print_name()
+
+        if self.is_map:
+            rv += "<" + self.raw_type + ", "
+            if self.resolved_type:
+                if args.fq:
+                    rv += self.resolved_type.print_name()
+                else:
+                    rv += self.mapped_type
+            else:
+                rv += self.mapped_type
+            rv += ">"
+        else:
+            if self.resolved_type:
+                if args.fq:
+                    rv += self.resolved_type.print_name()
+                else:
+                    rv += self.raw_type
             else:
                 rv += self.raw_type
-        else:
-            rv += self.raw_type
 
         return rv + (" (enum)" if self.is_enum else "") + \
-                (" (repeated)" if self.is_repeated else "")
+                (" (repeated)" if self.is_repeated else "") + \
+                (" (map)" if self.is_map else "")
 
     def verify_type_references(self, file_node):
         if self.is_builtin: return
@@ -337,9 +364,12 @@ class Field(Node, gen.Field):
         assert(type(file_node) is File)
         assert(file_node.namespace)
 
-        # b) see whether the type lives in the same namespace but is being imported. This
-        #    type name may be partially or fully qualified.
-        resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
+        if self.is_map:
+            assert(self.resolved_type or
+                   self.mapped_type in Field.algebraic_types + Field.string_types)
+            return
+        else:
+            resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
         if not resolved_type:
             sys.exit("Error: failed to resolve type: \"" + self.raw_type + "\" in " + file_node.path)
 

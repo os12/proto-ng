@@ -171,11 +171,15 @@ def decl_list(ctx, parent, scope):
 
 # Grammar:
 #  <decl>     ::= <builtin-field-decl> | <message-field-decl> | <enum-decl>
-#               | <reserved-decl> | <extensions-decl>
+#               | <reserved-decl> | <extensions-decl> | <map-field-decl>
 def decl(ctx, parent, scope):
     spec = None
     if ctx.scanner.next() == Token.Type.Specifier:
-        spec = ctx.consume()
+        if ctx.scanner.get().value == "map":
+            map_field_decl(ctx, parent, scope)
+            return
+        else:
+            spec = ctx.consume().value
 
     if ctx.scanner.next() == Token.Type.DataType:
         builtin_field_decl(ctx, parent, spec, scope)
@@ -193,6 +197,7 @@ def decl(ctx, parent, scope):
         ctx.consume_identifier(decl)
         ctx.consume_identifier(decl)
         ctx.consume_semi(decl)
+
     else:
         ctx.throw(decl)
 
@@ -201,9 +206,6 @@ def decl(ctx, parent, scope):
 #  <builtin-field-decl> ::= [ SPECIFIER ] BUILTIN-TYPE identifier EQUALS number
 #                           [ SQUARE_OPEN DEFAULT EQUALS builtin-value SQUARE_CLOSE ]
 #                           SEMI
-
-#               | identifier [ DOT identifier ] identifier EQALS number SEMI
-#               | <enum>
 def builtin_field_decl(ctx, parent, spec, scope):
     ftype = ctx.consume().value
     fname = ctx.consume_identifier(builtin_field_decl)
@@ -228,6 +230,44 @@ def builtin_field_decl(ctx, parent, spec, scope):
 
     parent.fields[int(fid.value)] = field_ast
     log(2, "[parser] " + indent_from_scope(scope) + "consumed a built-in 'field' declaration: " + fname.value)
+
+
+# Grammar:
+#  <map-field-decl> ::= MAP ANGLE_OPEN BUILTIN-TYPE COMA identifier ANGLE_CLOSE identifier EQUALS number SEMI
+def map_field_decl(ctx, parent, scope):
+    spec = ctx.consume_specifier(map_field_decl).value
+    assert(spec == "map")
+
+    ctx.consume_angle_open(map_field_decl)
+    key_type = ctx.consume_data_type(map_field_decl).value
+    ctx.consume_coma(map_field_decl)
+    mapped_type = ctx.consume()
+    if mapped_type.type == Token.Type.DataType:
+        resolved_mapped_type = None
+    elif mapped_type.type == Token.Type.Identifier:
+        resolved_mapped_type = nodes.find_type(parent, mapped_type.value)
+        assert(resolved_mapped_type)
+    else:
+        ctx.throw(builtin_field_decl, "Expected a known data type.")
+
+    ctx.consume_angle_close(map_field_decl)
+    fname = ctx.consume_identifier(map_field_decl)
+
+    ctx.consume_equals(map_field_decl)
+    fid = ctx.consume_number(map_field_decl)
+    ctx.consume_semi(map_field_decl)
+
+    field_ast = nodes.Field(fname.value,
+                            int(fid.value),
+                            key_type, None,
+                            spec,
+                            mapped_type.value)
+    field_ast.parent = parent
+    assert(field_ast.is_map)
+    field_ast.resolved_type = resolved_mapped_type
+
+    parent.fields[int(fid.value)] = field_ast
+    log(2, "[parser] " + indent_from_scope(scope) + "consumed a map 'field' declaration: " + fname.value)
 
 
 # Grammar:

@@ -65,6 +65,7 @@ class File:
 
         writeln(file, "#pragma once\n")
         writeln(file, "#include <cstdint>")
+        writeln(file, "#include <map>")
         writeln(file, "#include <memory>")
         writeln(file, "#include <string>")
         writeln(file, "#include <vector>")
@@ -300,7 +301,9 @@ class Field:
     # Returns the full type of the field's accessor respecting the "repeated" tag's presence.
     def cpp_type_ref(self):
         def repeated(type):
-            if self.is_repeated:
+            if self.is_map:
+                return "std::map<" + type + ">"
+            elif self.is_repeated:
                 return "std::vector<" + type + ">"
             return type
         return repeated(self.base_cpp_type_ref())
@@ -311,6 +314,12 @@ class Field:
             assert(not self.resolved_type)
             return cpp_impl_type(self.raw_type)
 
+        if self.is_map:
+            if self.resolved_type:
+                return cpp_impl_type(self.raw_type) + ", " + self.mapped_type
+            else:
+                return cpp_impl_type(self.raw_type) + ", " + cpp_impl_type(self.mapped_type)
+
         assert(self.resolved_type)
         if self.is_fq_ref:
             return self.resolved_type.fq_cpp_ref()
@@ -319,7 +328,7 @@ class Field:
 
     def generate_accessor_declarations(self, file, indent):
         writeln(file, "// [" + str(self.id) + "] " + self.name, indent)
-        if self.is_builtin and not self.is_repeated:
+        if self.is_builtin and not self.is_container():
             # These accessors take built-in args by value.
             writeln(file,
                     self.cpp_type_ref() + " " + self.name + "() const;",
@@ -327,7 +336,7 @@ class Field:
             writeln(file,
                     "void set_" + self.name + "(" + self.cpp_type_ref() + ");",
                     indent)
-        elif self.is_enum and not self.is_repeated:
+        elif self.is_enum and not self.is_container():
             # This one must deal with scopes, but the accessors work as built-ins.
             writeln(file,
                     self.cpp_type_ref() + " " + self.name + "() const;",
@@ -349,14 +358,15 @@ class Field:
                             " return &" + self.name + "(); }",
                         indent)
 
-        if not self.is_repeated:
+        if not self.is_container():
             writeln(file, "void clear_" + self.name + "();", indent)
 
-        if self.is_repeated and not args.omit_deprecated:
+        if self.is_container() and not args.omit_deprecated:
             writeln(file,
                     "/* deprecated */ " + "void clear_" + self.name + "() { " + \
                         self.name + "().clear(); }",
                     indent)
+        if self.is_repeated and not args.omit_deprecated:
             if self.is_builtin or self.is_enum:
                 writeln(file,
                         "/* deprecated */ " + \
@@ -383,7 +393,7 @@ class Field:
 
     def generate_accessor_definitions(self, file):
         writeln(file, "// [" + str(self.id) + "] " + self.name)
-        if self.is_builtin and not self.is_repeated:
+        if self.is_builtin and not self.is_container():
             writeln(file,
                     self.cpp_type_ref() + " " \
                         + self.parent.impl_cpp_type + "::" + self.name + "() const {")
@@ -395,7 +405,7 @@ class Field:
             writeln(file, "rep_->" + self.name + " = val;", 1)
             writeln(file, "rep_->_Presence.set(" + str(self.id) + ");", 1)
             writeln(file, "}")
-        elif self.is_enum and not self.is_repeated:
+        elif self.is_enum and not self.is_container():
             writeln(file,
                     self.cpp_type_ref() + " " \
                         + self.parent.impl_cpp_type + "::" + self.name + "() const {")
@@ -420,7 +430,7 @@ class Field:
             writeln(file, "return rep_->" + self.name + ";", 1)
             writeln(file, "}")
 
-        if not self.is_repeated:
+        if not self.is_container():
             writeln(file,
                     "void " + self.parent.impl_cpp_type + "::clear_" + self.name + "() {")
 
@@ -470,11 +480,11 @@ class Field:
         writeln(file, "")
 
     def generate_implementation_definition(self, file):
-        if self.is_algebraic and not self.is_repeated:
+        if self.is_algebraic and not self.is_container():
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + " = 0;", 1)
-        elif self.is_builtin and not self.is_repeated:
+        elif self.is_builtin and not self.is_container():
             writeln(file, cpp_impl_type(self.raw_type) + " " + self.name + ";", 1)
-        elif self.is_enum and not self.is_repeated:
+        elif self.is_enum and not self.is_container():
             writeln(file, self.cpp_type_ref() + " " + self.name + " = " + \
                 self.initializer() + ";", 1)
         else:

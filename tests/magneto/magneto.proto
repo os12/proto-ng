@@ -47,6 +47,10 @@ message AddressBook {
   repeated Person person_vec = 1;
   repeated string x = 2;
   repeated int32 y = 3;
+
+  map<int32, int64> int_map = 4;
+  map<int32, string> int_map2 = 5;
+  map<int32, Person> person_map = 6;
 }
 
 message WithForwardRef {

@@ -26,6 +26,8 @@ class Token:
         SquareOpen = 18
         SquareClose = 19
         Coma = 20
+        AngleOpen = 21
+        AngleClose = 22
 
     def __init__(self, type):
         self.type = type
@@ -57,7 +59,7 @@ class Scanner:
             ("Whitespace", r'[ \t\r\n]+|//.*$|/\*.*\*/'),
 
             ("DataType", r'int32|uint32|int64|uint64|double|float|string|bool|bytes'),
-            ("Specifier", r'repeated|optional|required'),
+            ("Specifier", r'repeated|optional|required|map'),
 
             ("Equals", r'='),
             ("Number", r'-?\d+'),
@@ -65,6 +67,8 @@ class Scanner:
             ("ParenClose", r'\)'),
             ("SquareOpen", r'\['),
             ("SquareClose", r'\]'),
+            ("AngleOpen", r'<'),
+            ("AngleClose", r'>'),
             ("ScopeOpen", r'{'),
             ("ScopeClose", r'}'),
             ("Semi", r';'),
@@ -164,6 +168,16 @@ class Context:
             self.throw(rule, " Expected a keyword.")
         return self.consume()
 
+    def consume_specifier(self, rule):
+        if self.scanner.next() != Token.Type.Specifier:
+            self.throw(rule, " Expected a specifier.")
+        return self.consume()
+
+    def consume_data_type(self, rule):
+        if self.scanner.next() != Token.Type.DataType:
+            self.throw(rule, " Expected a specifier.")
+        return self.consume()
+
     def consume_identifier(self, rule):
         if self.scanner.next() == Token.Type.Identifier:
             return self.consume()
@@ -204,6 +218,13 @@ class Context:
             self.throw(rule, " Expected '='.")
         return self.consume()
 
+    def consume_coma(self, rule):
+        if self.scanner.next() != Token.Type.Coma:
+            self.throw(rule, " Expected ','.")
+        return self.consume()
+
+
+
     def consume_scope_open(self, rule):
         if self.scanner.next() != Token.Type.ScopeOpen:
             self.throw(rule, " Expected '{'.")
@@ -214,7 +235,20 @@ class Context:
             self.throw(rule, " Expected '}'.")
         return self.consume()
 
+
+
     def consume_square_close(self, rule):
         if self.scanner.next() != Token.Type.SquareClose:
             self.throw(rule, " Expected ']'.")
+        return self.consume()
+
+
+    def consume_angle_open(self, rule):
+        if self.scanner.next() != Token.Type.AngleOpen:
+            self.throw(rule, " Expected '<'.")
+        return self.consume()
+
+    def consume_angle_close(self, rule):
+        if self.scanner.next() != Token.Type.AngleClose:
+            self.throw(rule, " Expected '>'.")
         return self.consume()
