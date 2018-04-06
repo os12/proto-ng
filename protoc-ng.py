@@ -348,11 +348,11 @@ def message_field_decl(ctx, parent, spec, scope):
 def enum_decl(ctx, parent, scope):
     name = ctx.consume_identifier(enum_decl).value
     fq_name = name
-    ctx.consume_scope_open(enum_decl)
     if scope:
-        assert(scope[-1] == '.')
-        fq_name = scope + name
-    enum_ast = nodes.Enum(fq_name)
+        fq_name = scope + fq_name
+
+    ctx.consume_scope_open(enum_decl)
+    enum_ast = nodes.Enum(fq_name, type(parent) == nodes.File)
     enum_ast.parent = parent
 
     parent.enums[name] = enum_ast

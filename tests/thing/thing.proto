@@ -61,3 +61,8 @@ message OtherMessage {
   int32 field = 1;
   repeated string required_feature_vec = 42;
 }
+
+message ForeignUser {
+  google.protobuf.ProtobufOuterType fouter = 1;
+  google.protobuf.ForeignOuter.ProtobufInnerType finner = 2;
+}

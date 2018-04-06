@@ -41,7 +41,7 @@ def cpp_arg_type(proto_type):
         return proto_type.replace(".", "::")
 
 def cpp_impl_type(proto_type):
-    if proto_type == "string":
+    if proto_type == "string" or proto_type == "bytes":
         return "std::string"
     elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
         return proto_type + "_t"
@@ -80,7 +80,7 @@ class File:
 
         # Top-level enums.
         for _, enum in self.enums.items():
-            enum.generate_header(file, 0)
+            enum.generate_declaration(file)
         if len(self.enums.keys()) > 0:
             writeln(file, "")
 
@@ -98,9 +98,9 @@ class File:
         writeln(file, "")
 
         # Include directives. At this point we need every generated type.
+        writeln(file, "#include <" + self.cpp_include_path() + ">")
         for _, file_ast in self.imports.items():
             writeln(file, "#include <" + file_ast.cpp_include_path() + ">")
-        writeln(file, "#include <" + self.cpp_include_path() + ">")
         writeln(file, "")
 
         for ns in self.namespace.split("."):
@@ -114,16 +114,15 @@ class File:
             writeln(file, "}  // " + ns)
 
     def generate_forward_declarations(self, file):
-        if len(self.messages) == 0:
+        if len(self.messages) == 0 and len(self.enums) == 0:
             return
 
         writeln(file, "// Forward declarations from " + self.filename())
         for ns in self.namespace.split("."):
             writeln(file, "namespace " + ns + " {")
 
-        '''TODO: how do I deal with enums?'''
-        #for _, enum in self.enums.items():
-        #    enum.generate_header(file, 0)
+        for _, enum in self.enums.items():
+            enum.generate_forward_declaration(file)
 
         for _, msg in self.messages.items():
             msg.generate_forward_declarations(file)
@@ -140,13 +139,43 @@ class Enum:
     def __init__(self, *args, **kwargs):
         super(Enum, self).__init__(*args, **kwargs)
 
-    def generate_header(self, file, indent):
-        writeln(file, "enum " + self.name() + " {", indent)
+    def generate_forward_declaration(self, file):
+        assert(self.impl_cpp_type)
+        writeln(file, "enum " + self.impl_cpp_type.split("::")[-1] + " : int;")
+
+    # Decorate scoped enums so that their values remain unique.
+    def decorate(self, value):
+        if self.is_package_global:
+            return value
+        return self.impl_cpp_type + "_" + value
+
+    def generate_declaration(self, file):
+        writeln(file, "enum " + self.impl_cpp_type + " : int {")
 
         for id, value in self.values.items():
-            writeln(file, value + " = " + str(id) + ",", indent + 1)
+            writeln(file, self.decorate(value) + " = " + str(id) + ",", 1)
 
-        writeln(file, "};", indent)
+        writeln(file, "};")
+
+    def generate_shortcut_declarations(self, file, indent):
+        writeln(file, "// Enum: " + self.fq_name, indent)
+        writeln(file, "using " + self.name() + " = " + self.impl_cpp_type + ";", indent)
+        for id, value in self.values.items():
+            writeln(file,
+                    "const static " + self.impl_cpp_type + " " + value + " = "
+                        + self.impl_cpp_type + "_" + value + ";",
+                    indent)
+        writeln(file, "")
+
+    def initializer(self):
+        # proto3
+        if 0 in self.values.keys():
+            return self.ns + "::" + self.decorate(self.values[0])
+
+        # proto2 - ToDo: this should be an ordered list to preserver semantics!
+        assert(len(self.values) > 0)
+        log(0, "Warning: changing semantics for " + self.fq_name + " usage!")
+        return self.ns + "::" + self.decorate(str(list(self.values.values())[0]))
 
 
 #
@@ -165,11 +194,17 @@ class Message:
         forwards = False
         for _, field in self.fields.items():
             if field.is_forward_decl:
-                writeln(file, "class " + field.raw_type + ";")
+                writeln(file, "class " + "_".join(field.raw_type.split(".")) + ";")
                 forwards = True
         if len(self.messages) > 0 or forwards:
             writeln(file, "")
 
+        # Enums
+        if len(self.enums.keys()) > 0:
+            writeln(file, "// Enums")
+        for _, enum in self.enums.items():
+            enum.generate_declaration(file)
+        write_blank_if(file, self.enums)
 
         # Start the C++ class.
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
@@ -199,18 +234,17 @@ class Message:
         writeln(file, "")
 
         # Aliases for sub-messages
+        if len(self.messages) > 0:
+            writeln(file, "// Sub-messages", 1)
         for _, sub_msg in self.messages.items():
             writeln(file,
                     "using " + sub_msg.name() + " = " + sub_msg.impl_cpp_type + ";",
                     1)
         write_blank_if(file, self.messages)
 
-        # Enums
-        if len(self.enums.keys()) > 0:
-            writeln(file, "// Enums", indent + 1)
+        # Aliases for sub-enums.
         for _, enum in self.enums.items():
-            enum.generate_header(file, indent + 1)
-        write_blank_if(file, self.enums)
+            enum.generate_shortcut_declarations(file, 1)
 
         # Fields
         for id, field in self.fields.items():
@@ -231,10 +265,12 @@ class Message:
         for _, sub_msg in self.messages.items():
             sub_msg.generate_header(file, ns)
 
-
     def generate_forward_declarations(self, file):
         assert(self.impl_cpp_type)
         writeln(file, "class " + self.impl_cpp_type.split("::")[-1] + ";")
+
+        for n, enum in self.enums.items():
+            enum.generate_forward_declaration(file)
 
         # (Sub)Messages
         for _, sub_msg in self.messages.items():
@@ -327,6 +363,16 @@ class Field:
             return self.resolved_type.fq_cpp_ref()
         else:
             return self.resolved_type.impl_cpp_type
+
+    def initializer(self):
+        assert(self.is_enum)
+        return self.resolved_type.initializer()
+
+        if type(self.resolved_type.parent) is File:
+            return self.resolved_type.initializer()
+
+        return self.resolved_type.parent.impl_cpp_type + "::" + \
+            self.resolved_type.initializer()
 
     def generate_accessor_declarations(self, file, indent):
         writeln(file, "// [" + str(self.id) + "] " + self.name, indent)

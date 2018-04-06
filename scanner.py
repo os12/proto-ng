@@ -121,10 +121,12 @@ class Scanner:
                 self.__reached_eof = True
                 yield Token(Token.Type.EoF)
                 if self.__reached_eof: return
-            log(3, "[scanner] read line: \"" + line[0:-1] + "\"")
+
+            if line[-1] == '\n': line = line[0:-1]
+            log(3, "[scanner] read line: \"" + line + "\"")
 
             # Exclude the trailing \n as "re" does not work properly in MULTILINE mode.
-            input += line[0:-1]
+            input += line
             self.line_num += 1
 
             match = self.__run_regex(input, pos)

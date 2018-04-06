@@ -109,7 +109,7 @@ class File(Node, gen.File):
         assert(self.namespace)
 
         for _, enum in self.enums.items():
-            enum.ns = self.namespace
+            enum.ns = "::".join(self.namespace.split("."))
             enum.impl_cpp_type = enum.name()
 
         for _, msg in self.messages.items():
@@ -232,7 +232,7 @@ class Message(Node, gen.Message):
 
         for _, enum in self.enums.items():
             enum.ns = ns
-            enum.impl_cpp_type = prefix + self.name() + "::" + enum.name()
+            enum.impl_cpp_type = prefix + self.name() + "_" + enum.name()
 
         for _, sub_msg in self.messages.items():
             sub_msg.set_cpp_type_names(ns, prefix + self.name() + "_")
@@ -247,7 +247,7 @@ class Message(Node, gen.Message):
             sub_msg.verify_type_references(file)
 
 class Enum(Node, gen.Enum):
-    def __init__(self, fq_name):
+    def __init__(self, fq_name, is_package_global):
         Node.__init__(self)
         gen.Enum.__init__(self)
 
@@ -255,20 +255,11 @@ class Enum(Node, gen.Enum):
         self.fq_name = fq_name
         self.values = {}
         self.impl_cpp_type = None
+        self.is_package_global = is_package_global
 
     def name(self):
         assert(self.fq_name)
         return self.fq_name.split('.')[-1]
-
-    def initializer(self):
-        # proto3
-        if 0 in self.values.keys():
-            return self.values[0]
-
-        # proto2 - ToDo: this should be an ordered list to preserver semantics!
-        assert(len(self.values) > 0)
-        log(0, "Warning: changing semantics for " + self.fq_name + " usage!")
-        return str(list(self.values.keys())[0])
 
     def fq_cpp_ref(self):
         return self.ns + "::" + self.impl_cpp_type
@@ -330,14 +321,6 @@ class Field(Node, gen.Field):
 
     def is_container(self):
         return self.is_repeated or self.is_map
-
-    def initializer(self):
-        assert(self.is_enum)
-        if type(self.resolved_type.parent) is File:
-            return self.resolved_type.initializer()
-
-        return self.resolved_type.parent.impl_cpp_type + "::" + \
-            self.resolved_type.initializer()
 
     def as_string(self, namespace):
         global args
