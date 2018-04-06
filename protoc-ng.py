@@ -277,7 +277,8 @@ def map_field_decl(ctx, parent, scope):
 
 
 # Grammar:
-#  <message-field-decl> ::= identifier [ DOT identifier ] identifier EQALS number SEMI
+#  <message-field-decl> ::= identifier [ DOT identifier ] identifier EQALS number
+#                           [ SQUARE_OPEN <stuff> SQUARE_CLOSE ] SEMI
 def message_field_decl(ctx, parent, spec, scope):
     # 1. take the type name, possible fully qualified.
     ftype = ctx.consume_identifier(message_field_decl).value
@@ -294,12 +295,17 @@ def message_field_decl(ctx, parent, spec, scope):
     fid = ctx.consume_number(message_field_decl)
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
-        tok = ctx.consume_identifier(builtin_field_decl)
-        if not tok.value in ["default", "deprecated"]:
-            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
+
+        paren = None
+        if ctx.scanner.next() == Token.Type.ParenOpen:
+            paren = ctx.consume()
+        stuff = ctx.consume_identifier(builtin_field_decl)
+        if paren:
+            ctx.consume_paren_close(builtin_field_decl)
+
         ctx.consume_equals(message_field_decl)
-        ctx.consume()
-        tok = ctx.consume_square_close(builtin_field_decl)
+        value = ctx.consume()
+        ctx.consume_square_close(builtin_field_decl)
     ctx.consume_semi(message_field_decl)
 
     # 4. verify the type reference
@@ -396,6 +402,7 @@ def extend(ctx, parent):
         fq_name += "." + trailer.value
 
     msg = nodes.Message(fq_name, parent)
+    msg.is_extend = True
     ctx.consume_scope_open(message)
 
     parent.extends[msg.name()] = msg

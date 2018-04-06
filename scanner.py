@@ -234,7 +234,6 @@ class Context:
         return self.consume()
 
 
-
     def consume_scope_open(self, rule):
         if self.scanner.next() != Token.Type.ScopeOpen:
             self.throw(rule, " Expected '{'.")
@@ -245,6 +244,16 @@ class Context:
             self.throw(rule, " Expected '}'.")
         return self.consume()
 
+
+    def consume_paren_open(self, rule):
+        if self.scanner.next() != Token.Type.ParenOpen:
+            self.throw(rule, " Expected '('.")
+        return self.consume()
+
+    def consume_paren_close(self, rule):
+        if self.scanner.next() != Token.Type.ParenClose:
+            self.throw(rule, " Expected ')'.")
+        return self.consume()
 
 
     def consume_square_close(self, rule):

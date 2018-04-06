@@ -248,9 +248,10 @@ class Message:
         for id, field in self.fields.items():
             field.generate_implementation_definition(file)
         writeln(file, "")
-        writeln(file,
-                "std::bitset<" + str(list(self.fields.keys())[-1] + 1) + "> _Presence;",
-                1)
+        if len(self.fields) > 0:
+            writeln(file,
+                    "std::bitset<" + str(list(self.fields.keys())[-1] + 1) + "> _Presence;",
+                    1)
         writeln(file, "};\n")
 
         # Construction, copying and assigment

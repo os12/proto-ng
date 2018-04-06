@@ -160,6 +160,7 @@ class Message(Node, gen.Message):
         self.messages = {}
 
         self.impl_cpp_type = None
+        self.is_extend = False
 
     def name(self):
         assert(self.fq_name)
@@ -178,7 +179,12 @@ class Message(Node, gen.Message):
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
-        assert(namespace + "." + self.name() == self.fq_name)
+
+        # Skip "extend" as there is no implementation yet. It's not a normal message...
+        if self.is_extend: return "Extend: " + self.fq_name
+
+        assert(namespace + "." + self.name() == self.fq_name), \
+            "namespace=" + namespace + ", fq_name=" + self.fq_name
 
         s = indent_from_scope(namespace) + "Message: " + self.print_name()
         if self.impl_cpp_type:
@@ -255,8 +261,17 @@ class Enum(Node, gen.Enum):
         return self.fq_name.split('.')[-1]
 
     def initializer(self):
-        assert(0 in self.values.keys())
-        return self.values[0]
+        # proto3
+        if 0 in self.values.keys():
+            return self.values[0]
+
+        # proto2 - ToDo: this should be an ordered list to preserver semantics!
+        assert(len(self.values) > 0)
+        log(0, "Warning: changing semantics for " + self.fq_name + " usage!")
+        return str(list(self.values.keys())[0])
+
+    def fq_cpp_ref(self):
+        return self.ns + "::" + self.impl_cpp_type
 
     def print_name(self):
         global args
