@@ -25,6 +25,9 @@ def parse_file(path, parent = None):
                 path = next_path
                 break
 
+    if path in scanner.Context.global_file_dict.keys():
+        return scanner.Context.global_file_dict[path]
+
     s = scanner.Scanner(path)
     if s.reached_eof():
         raise ValueError("Nothing to parse!")
@@ -33,6 +36,9 @@ def parse_file(path, parent = None):
     file_ast = file(ctx, parent)
     assert(ctx.scanner.reached_eof())
     file_ast.set_cpp_type_names()
+
+    scanner.Context.global_file_dict[path] = file_ast
+
     return file_ast
 
 # Grammar:

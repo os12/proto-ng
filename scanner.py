@@ -160,6 +160,8 @@ class Scanner:
             break
 
 class Context:
+    global_file_dict = {}
+
     def __init__(self, scanner):
         self.scanner = scanner
 
