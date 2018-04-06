@@ -1,4 +1,4 @@
-package tutorial;
+package thing;
 
 import "google/protobuf/timestamp.proto";
 

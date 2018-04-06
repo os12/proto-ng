@@ -1,5 +1,5 @@
 from collections import namedtuple
-from utils import writeln, write_blank_if
+from utils import writeln, write_blank_if, log
 import os
 
 Filename = namedtuple('Filename', ['cc', 'h'])
@@ -56,6 +56,7 @@ class File:
         super(File, self).__init__(*args, **kwargs)
 
     def generate(self, out_path):
+        log(0, "Generating C++ code for " + self.path)
         fname = get_cpp_file_paths(self.path, out_path)
         self.generate_header(fname.h)
         self.generate_source(fname.cc)
@@ -97,9 +98,9 @@ class File:
         writeln(file, "")
 
         # Include directives. At this point we need every generated type.
-        writeln(file, "#include <" + self.cpp_include_path() + ">")
         for _, file_ast in self.imports.items():
             writeln(file, "#include <" + file_ast.cpp_include_path() + ">")
+        writeln(file, "#include <" + self.cpp_include_path() + ">")
         writeln(file, "")
 
         for ns in self.namespace.split("."):

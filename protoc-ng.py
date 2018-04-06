@@ -435,6 +435,8 @@ group.add_argument('--file-extension', help='File extension for the generated C+
                    default="pbng")
 group.add_argument('--omit-deprecated', help='Omit the deprectated old-school accessors.',
                    action='store_true')
+group.add_argument('--all', help='Generate C++ code for all imported .proto files.',
+                   action='store_true')
 
 group = parser.add_argument_group('Diagnostic options')
 group.add_argument("-v", "--verbosity", help="increase output verbosity",
@@ -456,4 +458,8 @@ if not args.cpp_out:
 file = parse_file(args.filename)
 log(1, file.as_string())
 
-file.generate(args.cpp_out)
+if args.all:
+    for _, file in scanner.Context.global_file_dict.items():
+        file.generate(args.cpp_out)
+else:
+    file.generate(args.cpp_out)
