@@ -72,11 +72,8 @@ class File:
         writeln(file, "#include <vector>")
         writeln(file, "")
 
-        for _, file_ast in self.imports.items():
-            file_ast.generate_forward_declarations(file)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "namespace " + ns + " {")
+        # Generate and print forward type declarations bunched by their namespace
+        self.generate_forward_declarations_header(file)
 
         # Top-level enums.
         for _, enum in self.enums.items():
@@ -90,6 +87,33 @@ class File:
 
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
+
+    def generate_forward_declarations_header(self, file):
+        # First build sets of the enums/messages used by this File.
+        fdecls = {}
+        for name, file_ast in self.imports.items():
+            if not file_ast.namespace in fdecls:
+                fdecls[file_ast.namespace] = set()
+            file_ast.generate_forward_declarations(self.imported_type_names,
+                                                   fdecls[file_ast.namespace])
+
+        # Now print them in "imported" batches.
+        for ns in sorted(fdecls.keys()):
+            decl_set = fdecls[ns]
+            writeln(file, "// Forward declarations from " + ns)
+            for part in ns.split("."):
+                writeln(file, "namespace " + part + " {")
+
+            for decl in sorted(decl_set):
+                writeln(file, decl)
+
+            for part in reversed(ns.split(".")):
+                writeln(file, "}  // " + part)
+            writeln(file, "")
+
+        for ns in self.namespace.split("."):
+            writeln(file, "namespace " + ns + " {")
+        writeln(file, "")
 
     def generate_source(self, fname):
         file = open_file(fname)
@@ -113,23 +137,12 @@ class File:
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
 
-    def generate_forward_declarations(self, file):
-        if len(self.messages) == 0 and len(self.enums) == 0:
-            return
-
-        writeln(file, "// Forward declarations from " + self.filename())
-        for ns in self.namespace.split("."):
-            writeln(file, "namespace " + ns + " {")
-
+    def generate_forward_declarations(self, imported_set, decl_set):
         for _, enum in self.enums.items():
-            enum.generate_forward_declaration(file)
+            enum.generate_forward_declaration(imported_set, decl_set)
 
         for _, msg in self.messages.items():
-            msg.generate_forward_declarations(file)
-
-        for ns in self.namespace.split("."):
-            writeln(file, "}  // " + ns)
-        writeln(file, "")
+            msg.generate_forward_declarations(imported_set, decl_set)
 
 
 #
@@ -139,9 +152,11 @@ class Enum:
     def __init__(self, *args, **kwargs):
         super(Enum, self).__init__(*args, **kwargs)
 
-    def generate_forward_declaration(self, file):
+    def generate_forward_declaration(self, imported_set, decl_set):
         assert(self.impl_cpp_type)
-        writeln(file, "enum " + self.impl_cpp_type.split("::")[-1] + " : int;")
+
+        if self.fq_name in imported_set:
+            decl_set.add("enum " + self.impl_cpp_type.split("::")[-1] + " : int;")
 
     # Decorate scoped enums so that their values remain unique.
     def decorate(self, value):
@@ -174,7 +189,8 @@ class Enum:
 
         # proto2 - ToDo: this should be an ordered list to preserver semantics!
         assert(len(self.values) > 0)
-        log(0, "Warning: changing semantics for " + self.fq_name + " usage!")
+        if args.with_warnings:
+            log(0, "Warning: changing semantics for " + self.fq_name + " usage!")
         return self.ns + "::" + self.decorate(str(list(self.values.values())[0]))
 
 
@@ -208,7 +224,7 @@ class Message:
 
         # Start the C++ class.
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
-        writeln(file, " public:", indent)
+        writeln(file, "public:", indent)
 
         # Construction and assignment
         writeln(file, "// Construction and assignment", indent + 1)
@@ -265,16 +281,17 @@ class Message:
         for _, sub_msg in self.messages.items():
             sub_msg.generate_header(file, ns)
 
-    def generate_forward_declarations(self, file):
+    def generate_forward_declarations(self, imported_set, decl_set):
         assert(self.impl_cpp_type)
-        writeln(file, "class " + self.impl_cpp_type.split("::")[-1] + ";")
+        if self.fq_name in imported_set:
+            decl_set.add("class " + self.impl_cpp_type.split("::")[-1] + ";")
 
-        for n, enum in self.enums.items():
-            enum.generate_forward_declaration(file)
+        for _, enum in self.enums.items():
+            enum.generate_forward_declaration(imported_set, decl_set)
 
         # (Sub)Messages
         for _, sub_msg in self.messages.items():
-            sub_msg.generate_forward_declarations(file)
+            sub_msg.generate_forward_declarations(imported_set, decl_set)
 
     def generate_source(self, file, ns):
         # Implementation

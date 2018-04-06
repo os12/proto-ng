@@ -18,15 +18,20 @@ class File(Node, gen.File):
         gen.File.__init__(self)
 
         self.parent = parent
+        self.path = fs_path
+        self.namespace = ""
+        self.syntax = None
+
+        # AST that lives within this file
         self.statements = []
-        self.imports = {}
         self.options = []
         self.messages = {}
         self.extends = {}
         self.enums = {}
-        self.path = fs_path
-        self.namespace = ""
-        self.syntax = None
+
+        # AST for imported files as well as the flat set of all of the imported types
+        self.imports = {}
+        self.imported_type_names = set()
 
         assert(self.path)
         assert(self.path.count('\\') == 0), "Got a Windows path: " + self.path
@@ -39,6 +44,11 @@ class File(Node, gen.File):
 
         global args
         return self.path[0:-5] + args.file_extension + ".h"
+
+    def store_external_typename_ref(self, fq_type_name):
+        # Ideally, this typename should be stored against the import, but I don't know
+        # how to deal with transitive imports... so, let's just maintain a flat set.
+        self.imported_type_names.add(fq_type_name)
 
     def as_string(self):
         s = ""
@@ -369,7 +379,10 @@ class Field(Node, gen.Field):
         else:
             resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
         if not resolved_type:
-            sys.exit("Error: failed to resolve type: \"" + self.raw_type + "\" in " + file_node.path)
+            sys.exit("Error: failed to resolve type: \"" + self.raw_type + "\" in " +
+                     file_node.path)
+
+        file_node.store_external_typename_ref(resolved_type.fq_name)
 
         assert(resolved_type.fq_name[-len(self.raw_type):] == self.raw_type)
         self.resolved_type = resolved_type

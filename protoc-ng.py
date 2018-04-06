@@ -327,6 +327,7 @@ def message_field_decl(ctx, parent, spec, scope):
         resolved_type = file_node.resolve_type(file_node.namespace, ftype)
         if resolved_type:
             assert(resolved_type.fq_name[-len(ftype):] == ftype)
+            file_node.store_external_typename_ref(resolved_type.fq_name)
         else:
             log(1, "[parser] " + indent_from_scope(scope) + "!!! failed to resolve a local type: " +
                 ftype + ". Assuming this is a forward declaration...")
@@ -444,6 +445,8 @@ group.add_argument("-v", "--verbosity", help="increase output verbosity",
 group.add_argument("--fq", help="print fully-qualified message and enum types in AST",
                    action='store_true')
 group.add_argument("--with-verbose-imports", help="print AST for imported files",
+                   action='store_true')
+group.add_argument("-w", "--with-warnings", help="print warnings pertaining to the generated code's semantics",
                    action='store_true')
 
 args = parser.parse_args()
