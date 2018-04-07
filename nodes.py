@@ -1,6 +1,6 @@
 import sys
 
-import gen
+import gen, utils
 from utils import indent_from_scope, writeln, log
 
 #
@@ -168,6 +168,7 @@ class Message(Node, gen.Message):
         self.fields = {}
         self.enums = {}
         self.messages = {}
+        self.extends = {}
 
         self.impl_cpp_type = None
         self.is_extend = False
@@ -264,6 +265,7 @@ class Enum(Node, gen.Enum):
         self.ns = ""
         self.fq_name = fq_name
         self.values = {}
+        self.options = []
         self.impl_cpp_type = None
         self.is_package_global = is_package_global
 
@@ -376,11 +378,15 @@ class Field(Node, gen.Field):
             assert(self.resolved_type or
                    self.mapped_type in Field.algebraic_types + Field.string_types)
             return
+
+        resolved_type = find_type(self.parent, self.raw_type)
+        if resolved_type:
+            assert(utils.is_suffix(resolved_type.fq_name, self.raw_type))
         else:
             resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
         if not resolved_type:
-            sys.exit("Error: failed to resolve type: \"" + self.raw_type + "\" in " +
-                     file_node.path)
+            sys.exit('Error: failed to resolve type: "' + self.raw_type + '" in ' +
+                     file_node.path + ' for the following field: "' + self.name + '"')
 
         file_node.store_external_typename_ref(resolved_type.fq_name)
 
@@ -390,22 +396,33 @@ class Field(Node, gen.Field):
             resolved_type.fq_name)
 
 
-# Looks for the given field type 'ftype' in the ever-widening message scopes (from inside
+# Looks for the given field type 'typname' in the ever-widening message scopes (from inside
 # out).
 #
 # This function finds anything that can be used as a field:
 #   - message
 #   - enum
-def find_type(ast, ftype):
-	if not ast:
-		return None
+def find_type(ast, typename):
+    if not ast:
+        return None
 
-	if ftype in ast.messages:
-		return ast.messages[ftype]
-	if ftype in ast.enums:
-		return ast.enums[ftype]
+    assert(typename.count("::") == 0)
+    parts = typename.split(".")
+    assert(len(parts) >= 1)
+    front = parts.pop(0)
 
-	return find_type(ast.parent, ftype)
+    if front in ast.messages:
+        msg = ast.messages[front]
+        if len(parts) == 0:
+            return msg
+        return msg.resolve_type("[foobar-unused]", msg.name() + "." + ".".join(parts))
+
+    if front in ast.enums:
+        if len(parts) == 0:
+            return ast.enums[front]
+        return None
+
+    return find_type(ast.parent, typename)
 
 def find_top_parent(ast):
     assert(ast)

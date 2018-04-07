@@ -52,6 +52,7 @@ def file(ctx, parent):
         statement(ctx, file)
 
     # OK, this file has been parsed, but there may be unresolved (forward) references.
+    log(1, "Parsed " + file.path + ", verifying type references...")
     file.verify_type_references()
 
     return file
@@ -82,7 +83,6 @@ def statement(ctx, file_node):
         log(2, "[parser] consumed an 'option' statement: " + file_node.options[-1].name)
     elif keyword.value == "message":
         msg = message(ctx, file_node, file_node.namespace + ".")
-        file_node.messages[msg.name()] = msg
     elif keyword.value == "enum":
         enum_decl(ctx, file_node, file_node.namespace + ".")
     elif keyword.value == "extend":
@@ -139,20 +139,15 @@ def option(ctx):
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
 def message(ctx, parent, scope):
     fq_name = ctx.consume_identifier(message).value
-
-    # This is the "extend" hack - consume a bunch of FQ parts.
-    while ctx.scanner.next() == Token.Type.Dot:
-        ctx.consume()
-        trailer = ctx.consume_identifier(package)
-        fq_name += "." + trailer.value
-
     if scope:
         fq_name = scope + fq_name
 
     msg = nodes.Message(fq_name, parent)
     ctx.consume_scope_open(message)
 
-    log(2, "[parser] " + indent_from_scope(fq_name) + "consumed a 'message' : " + msg.fq_name)
+    # Splice the new Node into the AST right here so that type lookups work.
+    parent.messages[msg.name()] = msg
+    log(2, "[parser] " + indent_from_scope(fq_name) + "Started a 'message' : " + msg.fq_name)
 
     decl_list(ctx, msg, fq_name + ".")
     ctx.consume_scope_close(message)
@@ -161,6 +156,7 @@ def message(ctx, parent, scope):
     if ctx.scanner.next() == Token.Type.Semi:
         ctx.consume()
 
+    log(2, "[parser] " + indent_from_scope(fq_name) + "Finished " + msg.fq_name)
     return msg
 
 # Grammar:
@@ -171,13 +167,12 @@ def decl_list(ctx, parent, scope):
         if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "message":
             ctx.consume_keyword(decl_list)
             msg = message(ctx, parent, scope)
-            parent.messages[msg.name()] = msg
             continue
 
-        # This is a temporary hack - there is no extension logic here yet.
+        # Provess extensions.
         if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extend":
             ctx.consume_keyword(decl_list)
-            message(ctx, parent, scope)
+            extend(ctx, parent)
             continue
 
         # This must be a normal field declaration.
@@ -255,6 +250,9 @@ def map_field_decl(ctx, parent, scope):
     key_type = ctx.consume_data_type(map_field_decl).value
     ctx.consume_coma(map_field_decl)
     mapped_type = ctx.consume()
+    ctx.consume_angle_close(map_field_decl)
+    fname = ctx.consume_identifier(map_field_decl)
+
     if mapped_type.type == Token.Type.DataType:
         resolved_mapped_type = None
     elif mapped_type.type == Token.Type.Identifier:
@@ -264,12 +262,10 @@ def map_field_decl(ctx, parent, scope):
             this_file_node = nodes.find_file_parent(parent)
             resolved_mapped_type = top_file_node.resolve_type(this_file_node.namespace, mapped_type.value)
             if not resolved_mapped_type:
-                ctx.throw(map_field_decl, "Failed to resolve type: " + mapped_type.value)
+                sys.exit('Error: failed to resolve type: "' + mapped_type.value + '" in ' +
+                     this_file_node.path + ' for the following field: "' + fname.value + '"')
     else:
         ctx.throw(builtin_field_decl, "Expected a known data type.")
-
-    ctx.consume_angle_close(map_field_decl)
-    fname = ctx.consume_identifier(map_field_decl)
 
     ctx.consume_equals(map_field_decl)
     fid = ctx.consume_number(map_field_decl)
@@ -325,7 +321,7 @@ def message_field_decl(ctx, parent, spec, scope):
     #      which is subject to the C++-style visibility rules.
     resolved_type = nodes.find_type(parent, ftype)
     if resolved_type:
-        assert(resolved_type.name() == ftype)
+        assert(utils.is_suffix(resolved_type.fq_name, ftype))
         field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
         field_ast.is_fq_ref = False
     else:
@@ -341,8 +337,7 @@ def message_field_decl(ctx, parent, spec, scope):
             assert(resolved_type.fq_name[-len(ftype):] == ftype)
             file_node.store_external_typename_ref(resolved_type.fq_name)
         else:
-            log(1, "[parser] " + indent_from_scope(scope) + "!!! failed to resolve a local type: " +
-                ftype + ". Assuming this is a forward declaration...")
+            log(1, "[parser] " + indent_from_scope(scope) + ftype + " appears to be is a forward declaration")
 
         field_ast = nodes.Field(fname.value, int(fid.value), ftype, resolved_type, spec)
         field_ast.is_fq_ref = resolved_type != None
@@ -380,29 +375,40 @@ def enum_decl(ctx, parent, scope):
 
 # Grammar:
 #  <evalue_list>     ::= <evalue> [ <evalue> ]
-def evalue_list(ctx, parent, scope):
+def evalue_list(ctx, enum, scope):
     while ctx.scanner.next() != Token.Type.ScopeClose:
-        evalue(ctx, parent, scope + ".")
+        if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.next_value() == "option":
+            ctx.consume_keyword(evalue_list)
+            enum.options.append(option(ctx))
+            log(2, "[parser] consumed an enum 'option' statement: " + enum.options[-1].name)
+            continue
+        evalue(ctx, enum, scope + ".")
 
 # Grammar:
 #  <evalue>     ::= identifier EQALS number SEMI
 def evalue(ctx, enum, scope):
-    fname = ctx.consume_identifier(evalue)
+    val = ctx.consume_identifier(evalue)
     ctx.consume_equals(evalue)
     eid = ctx.consume_number(evalue)
     ctx.consume_semi(evalue)
-    enum.values[int(eid.value)] = fname.value
-    log(2, '[parser] ' + indent_from_scope(scope) + "consumed an enum constant: " + fname.value)
+    enum.values[int(eid.value)] = val.value
+    log(2, '[parser] ' + indent_from_scope(scope) + "consumed an enum constant: " + val.value)
 
 # Grammar:
-#  <reserved-decl>     ::= RESERVED number [COMA number ] SEMI
+#  <reserved-decl>     ::= RESERVED number ( [COMA number ] | [ TO number ] ) SEMI
 def reserved_decl(ctx, parent, scope):
     id = int(ctx.consume_number(reserved_decl).value)
-    while ctx.scanner.next() == Token.Type.Coma:
-        ctx.consume()
-        ctx.consume_number(reserved_decl)
-    ctx.consume_semi(reserved_decl)
+    if ctx.scanner.next() == Token.Type.Coma:
+        while ctx.scanner.next() == Token.Type.Coma:
+            ctx.consume()
+            ctx.consume_number(reserved_decl)
+    elif ctx.scanner.next() == Token.Type.Identifier:
+        to = ctx.consume_identifier(reserved_decl)
+        if to.value != "to":
+            ctx.throw("Expected \"to\".")
+        id2 = int(ctx.consume_number(reserved_decl).value)
 
+    ctx.consume_semi(reserved_decl)
     log(2, '[parser] ' + indent_from_scope(scope) + "consumed an 'reserved' declaration: " + str(id))
 
 # Grammar:
@@ -446,7 +452,7 @@ group = parser.add_argument_group('Code generation options')
 group.add_argument('--file-extension', help='File extension for the generated C++ files. ' +
                    'Defaults to "pbng" (which yields <fname>.pbng.h).',
                    default="pbng")
-group.add_argument('--omit-deprecated', help='Omit the deprectated old-school accessors.',
+group.add_argument('--omit-deprecated', help='Omit the deprecated old-school accessors.',
                    action='store_true')
 group.add_argument('--all', help='Generate C++ code for all imported .proto files.',
                    action='store_true')
@@ -471,7 +477,8 @@ if not args.cpp_out:
     sys.exit("Error: missing the \"--cpp_out\" argument - please provide the output directory.")
 
 file = parse_file(args.filename)
-log(1, file.as_string())
+if args.verbosity >= 1:
+    log(1, file.as_string())
 
 if args.all:
     for _, file in scanner.Context.global_file_dict.items():

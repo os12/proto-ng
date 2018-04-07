@@ -63,7 +63,7 @@ class Scanner:
             ("Whitespace", r'[ \t\r\n]+|//.*$|/\*.*\*/'),
 
             ("Equals", r'='),
-            ("Number", r'-?\d+'),
+            ("Number", r'-?\d+(\.\d*)?'),
             ("ParenOpen", r'\('),
             ("ParenClose", r'\)'),
             ("SquareOpen", r'\['),
@@ -98,6 +98,9 @@ class Scanner:
 
     def next(self):
         return self.get().type
+
+    def next_value(self):
+        return self.get().value
 
     def pop(self):
         assert(not self.reached_eof())

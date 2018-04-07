@@ -38,7 +38,10 @@ message Person {
 
   repeated PhoneNumber phone_vec = 4;
 
-  // Imported messages.
+  // Partially qualified type references
+  PhoneNumber.InnerPhoneType ph_type = 10 [default = MOBILE ];
+
+  // Imported messages
   google.protobuf.Timestamp timestamp = 5;
   google.protobuf.ForeignOuter.ForeignInner imported = 6;
 }

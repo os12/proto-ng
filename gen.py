@@ -73,7 +73,7 @@ class File:
         writeln(file, "")
 
         # Generate and print forward type declarations bunched by their namespace
-        self.generate_forward_declarations_header(file)
+        self.generate_forward_imported_declarations_header(file)
 
         # Top-level enums.
         for _, enum in self.enums.items():
@@ -88,14 +88,15 @@ class File:
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
 
-    def generate_forward_declarations_header(self, file):
+    def generate_forward_imported_declarations_header(self, file):
         # First build sets of the enums/messages used by this File.
         fdecls = {}
         for name, file_ast in self.imports.items():
             if not file_ast.namespace in fdecls:
                 fdecls[file_ast.namespace] = set()
-            file_ast.generate_forward_declarations(self.imported_type_names,
-                                                   fdecls[file_ast.namespace])
+            file_ast.generate_forward_imported_declarations(
+                self.imported_type_names,
+                fdecls[file_ast.namespace])
 
         # Now print them in "imported" batches.
         for ns in sorted(fdecls.keys()):
@@ -137,12 +138,12 @@ class File:
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
 
-    def generate_forward_declarations(self, imported_set, decl_set):
+    def generate_forward_imported_declarations(self, imported_set, decl_set):
         for _, enum in self.enums.items():
             enum.generate_forward_declaration(imported_set, decl_set)
 
         for _, msg in self.messages.items():
-            msg.generate_forward_declarations(imported_set, decl_set)
+            msg.generate_forward_imported_declarations(imported_set, decl_set)
 
 
 #
@@ -202,17 +203,8 @@ class Message:
         super(Message, self).__init__(*args, **kwargs)
 
     def generate_header(self, file, ns, indent = 0):
-        # Forward declarations for sub-messages.
-        for _, sub_msg in self.messages.items():
-            writeln(file, "class " + sub_msg.impl_cpp_type + ";")
-
-        # Forward declarations for the implicitly declared (foward-declared) local messages.
-        forwards = False
-        for _, field in self.fields.items():
-            if field.is_forward_decl:
-                writeln(file, "class " + "_".join(field.raw_type.split(".")) + ";")
-                forwards = True
-        if len(self.messages) > 0 or forwards:
+        forwards = self.generate_forward_declarations(file)
+        if forwards > 0:
             writeln(file, "")
 
         # Enums
@@ -220,7 +212,6 @@ class Message:
             writeln(file, "// Enums")
         for _, enum in self.enums.items():
             enum.generate_declaration(file)
-        write_blank_if(file, self.enums)
 
         # Start the C++ class.
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
@@ -281,7 +272,26 @@ class Message:
         for _, sub_msg in self.messages.items():
             sub_msg.generate_header(file, ns)
 
-    def generate_forward_declarations(self, imported_set, decl_set):
+    def generate_forward_declarations(self, file):
+        # Forward declarations for sub-messages and enums.
+        forwards = 0
+        for _, sub_msg in self.messages.items():
+            writeln(file, "class " + sub_msg.impl_cpp_type + ";")
+            forwards += sub_msg.generate_forward_declarations(file)
+
+        # Forward declarations for the implicitly declared (forward-declared) local messages.
+        for _, field in self.fields.items():
+            if field.is_forward_decl:
+                writeln(file, "class " + "_".join(field.raw_type.split(".")) + ";")
+                forwards += 1
+
+        # Enums
+        for _, enum in self.enums.items():
+            writeln(file, "enum " + enum.impl_cpp_type.split("::")[-1] + " : int;")
+            forwards += 1
+        return forwards
+
+    def generate_forward_imported_declarations(self, imported_set, decl_set):
         assert(self.impl_cpp_type)
         if self.fq_name in imported_set:
             decl_set.add("class " + self.impl_cpp_type.split("::")[-1] + ";")
@@ -291,7 +301,7 @@ class Message:
 
         # (Sub)Messages
         for _, sub_msg in self.messages.items():
-            sub_msg.generate_forward_declarations(imported_set, decl_set)
+            sub_msg.generate_forward_imported_declarations(imported_set, decl_set)
 
     def generate_source(self, file, ns):
         # Implementation
@@ -424,6 +434,7 @@ class Field:
                         indent)
 
         if not self.is_container():
+            writeln(file, "bool has_" + self.name + "() const;", indent)
             writeln(file, "void clear_" + self.name + "();", indent)
 
         if self.is_container() and not args.omit_deprecated:
@@ -431,6 +442,7 @@ class Field:
                     "/* deprecated */ " + "void clear_" + self.name + "() { " + \
                         self.name + "().clear(); }",
                     indent)
+
         if self.is_repeated and not args.omit_deprecated:
             if self.is_builtin or self.is_enum:
                 writeln(file,
@@ -498,7 +510,6 @@ class Field:
         if not self.is_container():
             writeln(file,
                     "void " + self.parent.impl_cpp_type + "::clear_" + self.name + "() {")
-
             if self.is_algebraic:
                 writeln(file, "rep_->" + self.name + " = 0;", 1)
             elif self.is_builtin:
@@ -508,6 +519,11 @@ class Field:
             else:
                 writeln(file, "rep_->" + self.name + ".Clear();", 1)
             writeln(file, "rep_->_Presence.reset(" + str(self.id) + ");", 1)
+            writeln(file, "}")
+
+            writeln(file,
+                    "bool " + self.parent.impl_cpp_type + "::has_" + self.name + "() const {")
+            writeln(file, "return rep_->_Presence.test(" + str(self.id) + ");", 1)
             writeln(file, "}")
 
         if self.is_repeated and not args.omit_deprecated:

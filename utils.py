@@ -20,3 +20,8 @@ def writeln(file, line, indent = 0):
 def write_blank_if(file, collection):
     if len(collection) > 0:
         writeln(file, "")
+
+def is_suffix(str, suffix):
+    su_len = len(suffix)
+    assert(len(str) >= su_len)
+    return str[len(str) - su_len:] == suffix
