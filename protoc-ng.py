@@ -81,7 +81,8 @@ def statement(ctx, file_node):
         file_node.options.append(option(ctx))
         log(2, "[parser] consumed an 'option' statement: " + file_node.options[-1].name)
     elif keyword.value == "message":
-        message(ctx, file_node, file_node.namespace + ".")
+        msg = message(ctx, file_node, file_node.namespace + ".")
+        file_node.messages[msg.name()] = msg
     elif keyword.value == "enum":
         enum_decl(ctx, file_node, file_node.namespace + ".")
     elif keyword.value == "extend":
@@ -138,13 +139,19 @@ def option(ctx):
 #  <message>     ::= SCOPE_OPEN decl_list SCOPE_CLOSE
 def message(ctx, parent, scope):
     fq_name = ctx.consume_identifier(message).value
+
+    # This is the "extend" hack - consume a bunch of FQ parts.
+    while ctx.scanner.next() == Token.Type.Dot:
+        ctx.consume()
+        trailer = ctx.consume_identifier(package)
+        fq_name += "." + trailer.value
+
     if scope:
         fq_name = scope + fq_name
 
     msg = nodes.Message(fq_name, parent)
     ctx.consume_scope_open(message)
 
-    parent.messages[msg.name()] = msg
     log(2, "[parser] " + indent_from_scope(fq_name) + "consumed a 'message' : " + msg.fq_name)
 
     decl_list(ctx, msg, fq_name + ".")
@@ -163,7 +170,8 @@ def decl_list(ctx, parent, scope):
         # Process sub-messages.
         if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "message":
             ctx.consume_keyword(decl_list)
-            message(ctx, parent, scope)
+            msg = message(ctx, parent, scope)
+            parent.messages[msg.name()] = msg
             continue
 
         # This is a temporary hack - there is no extension logic here yet.
@@ -203,7 +211,6 @@ def decl(ctx, parent, scope):
         ctx.consume_identifier(decl)
         ctx.consume_identifier(decl)
         ctx.consume_semi(decl)
-
     else:
         ctx.throw(decl)
 
@@ -252,7 +259,12 @@ def map_field_decl(ctx, parent, scope):
         resolved_mapped_type = None
     elif mapped_type.type == Token.Type.Identifier:
         resolved_mapped_type = nodes.find_type(parent, mapped_type.value)
-        assert(resolved_mapped_type)
+        if not resolved_mapped_type:
+            top_file_node = nodes.find_top_parent(parent)
+            this_file_node = nodes.find_file_parent(parent)
+            resolved_mapped_type = top_file_node.resolve_type(this_file_node.namespace, mapped_type.value)
+            if not resolved_mapped_type:
+                ctx.throw(map_field_decl, "Failed to resolve type: " + mapped_type.value)
     else:
         ctx.throw(builtin_field_decl, "Expected a known data type.")
 
@@ -396,7 +408,7 @@ def reserved_decl(ctx, parent, scope):
 # Grammar:
 #  <extend>     ::= identifier [ DOT identifier ] SCOPE_OPEN decl_list SCOPE_CLOSE
 def extend(ctx, parent):
-    fq_name = ctx.consume_identifier(message).value
+    fq_name = ctx.consume_identifier(extend).value
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
         trailer = ctx.consume_identifier(package)
@@ -404,13 +416,13 @@ def extend(ctx, parent):
 
     msg = nodes.Message(fq_name, parent)
     msg.is_extend = True
-    ctx.consume_scope_open(message)
+    ctx.consume_scope_open(extend)
 
     parent.extends[msg.name()] = msg
     log(2, "[parser] consumed an 'extend' : " + msg.fq_name)
 
     decl_list(ctx, msg, fq_name + ".")
-    ctx.consume_scope_close(message)
+    ctx.consume_scope_close(extend)
 
     # protoc is accepts a SEMI here for no apparent reason.
     if ctx.scanner.next() == Token.Type.Semi:
