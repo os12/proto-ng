@@ -1,0 +1,19 @@
+package thing;
+
+import "thing/thing.proto";
+
+message GlobalExtension {
+  int32 eg_field = 1;
+}
+
+extend Person {
+  GlobalExtension ext100 = 100;     // package-global extension id
+}
+
+message NestedExtension {
+  extend Person {
+    NestedExtension ext200 = 200;   // nested extension id
+  }
+
+  int32 en_field = 1;
+}

@@ -43,7 +43,7 @@ class Token:
 class Scanner:
     keywords = {'package', 'syntax', 'import', 'option',
                            'message', 'enum', 'extend',
-                           'reserved', 'extensions'}
+                           'reserved', 'extensions', 'max', 'to'}
     data_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'string', 'bool',
                  'bytes']
     specifiers = ['repeated', 'optional', 'required', 'map']

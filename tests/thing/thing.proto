@@ -44,6 +44,8 @@ message Person {
   // Imported messages
   google.protobuf.Timestamp timestamp = 5;
   google.protobuf.ForeignOuter.ForeignInner imported = 6;
+
+  extensions 100 to 199;
 }
 
 message AddressBook {

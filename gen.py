@@ -1,5 +1,6 @@
 from collections import namedtuple
 from utils import writeln, write_blank_if, log
+
 import os
 
 Filename = namedtuple('Filename', ['cc', 'h'])
@@ -61,6 +62,27 @@ class File:
         self.generate_header(fname.h)
         self.generate_source(fname.cc)
 
+        file = open_file(args.cpp_out + "/infra.h")
+
+        writeln(file, "#pragma once")
+        writeln(file, "")
+        writeln(file, "namespace proto_ng {")
+        writeln(file, "// Support for extensions")
+        writeln(file, "namespace detail {")
+        writeln(file, "template<typename Extension>")
+        writeln(file, "struct Helper {};")
+        writeln(file, "template<typename Extension>")
+        writeln(file, "inline int ResolveField(Extension) { return -1; }")
+        writeln(file, "}  // detail")
+        writeln(file, "}  // proto_ng")
+        writeln(file, "")
+
+    def count_extends(self):
+        count = len(self.extends)
+        for _, msg in self.messages.items():
+            count += msg.count_extends()
+        return count
+
     def generate_header(self, fname):
         file = open_file(fname)
 
@@ -70,6 +92,7 @@ class File:
         writeln(file, "#include <memory>")
         writeln(file, "#include <string>")
         writeln(file, "#include <vector>")
+        writeln(file, "#include <infra.h>")
         writeln(file, "")
 
         # Generate and print forward type declarations bunched by their namespace
@@ -81,12 +104,32 @@ class File:
         if len(self.enums.keys()) > 0:
             writeln(file, "")
 
+        extend_count = self.count_extends()
+
         # Messages.
         for _, msg in self.messages.items():
             msg.generate_header(file, self.namespace)
 
+        # Extension declarations
+        if len(self.extends) > 0:
+            writeln(file, "// Extensions")
+            for _, extend in self.extends.items():
+                extend.generate_extend_declarations(file, 0)
+            writeln(file, "")
+
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
+
+        # Extension helpers
+        if extend_count > 0:
+            writeln(file, "")
+            writeln(file, "namespace proto_ng { namespace detail {")
+            for _, extend in self.extends.items():
+                extend.generate_extend_helpers(file)
+            for _, msg in self.messages.items():
+                msg.generate_extend_helpers(file)
+            writeln(file, "} }")
+            writeln(file, "")
 
     def generate_forward_imported_declarations_header(self, file):
         # First build sets of the enums/messages used by this File.
@@ -137,6 +180,12 @@ class File:
 
         for ns in self.namespace.split("."):
             writeln(file, "}  // " + ns)
+
+        # Finally generate extension objects. It's easier to declare these in a FQ fashion.
+        for _, extend in self.extends.items():
+            extend.generate_extend_definition(file)
+        for _, msg in self.messages.items():
+            msg.generate_extend_definition(file)
 
     def generate_forward_imported_declarations(self, imported_set, decl_set):
         for _, enum in self.enums.items():
@@ -234,6 +283,7 @@ class Message:
         writeln(file, "")
 
         # Generally accessible, common API
+        writeln(file, "// Common API", indent + 1)
         writeln(file,
                 "static const " + self.impl_cpp_type + "& " + "default_instance();",
                 indent + 1)
@@ -243,6 +293,36 @@ class Message:
         writeln(file, "std::string DebugString() const;", indent + 1)
         writeln(file, "std::string ShortDebugString() const;", indent + 1)
         writeln(file, "")
+
+        # Extension support
+        if self.min_extension_id:
+            writeln(file, "// Extension API (the base type's part)", indent + 1)
+            writeln(file, "template<class Extension>", indent + 1)
+            writeln(file, "bool HasExtension(Extension ext) const {", indent + 1)
+            writeln(file, "return _HasField(::proto_ng::detail::ResolveField(ext));", indent + 2)
+            writeln(file, "}", indent + 1)
+            writeln(file, "template<class Extension>", indent + 1)
+            writeln(file,
+                    "typename ::proto_ng::detail::Helper<Extension>::mutable_type " +
+                        "MutableExtension(Extension ext) {",
+                    indent + 1)
+            writeln(file, "if (!HasExtension(ext)) return nullptr;", indent + 2)
+            writeln(file,
+                    "return reinterpret_cast<typename ::proto_ng::detail::Helper<Extension>::mutable_type>(",
+                    indent + 3)
+            writeln(file, "_GetField(::proto_ng::detail::ResolveField(ext)));", indent + 3)
+            writeln(file, "}", indent + 1)
+
+            writeln(file, "bool _HasField(int id) const { return false; }", indent + 1)
+            writeln(file, "void* _GetField(int id) { return nullptr; }", indent + 1)
+            writeln(file, "")
+
+        # Extensions
+        if len(self.extends) > 0:
+            writeln(file, "// Extensions", indent + 1)
+            for _, extend in self.extends.items():
+                extend.generate_extend_declarations(file, indent + 1)
+            writeln(file, "")
 
         # Aliases for sub-messages
         if len(self.messages) > 0:
@@ -306,6 +386,51 @@ class Message:
         # (Sub)Messages
         for _, sub_msg in self.messages.items():
             sub_msg.generate_forward_imported_declarations(imported_set, decl_set)
+
+    def count_extends(self):
+        count = len(self.extends)
+        for _, msg in self.messages.items():
+            count += msg.count_extends()
+        return count
+
+    def generate_extend_declarations(self, file, indent):
+        assert(self.is_extend)
+
+        for id, field in self.fields.items():
+            # Deal with C++ scopes - namespace-based things are "extern" while class-based
+            # things are static.
+            if self.is_file_scope():
+                prefix = "extern"
+            else:
+                prefix = "static"
+            writeln(file,
+                    prefix + " const struct " + field.name + "_t { int id; } " +
+                        field.name + ";",
+                    indent)
+
+    def generate_extend_helpers(self, file):
+        if self.is_extend:
+            for _, field in self.fields.items():
+                field.generate_extend_helpers(file)
+            return
+
+        for _, extend in self.extends.items():
+            extend.generate_extend_helpers(file)
+        for _, msg in self.messages.items():
+            msg.generate_extend_helpers(file)
+
+    def generate_extend_definition(self, file):
+        if self.is_extend:
+            for id, field in self.fields.items():
+                writeln(file,
+                        "const ::" + field.parent.cpp_extend_namespace() + "::" + field.name + "_t " +
+                            field.parent.cpp_extend_namespace() + "::" +
+                            field.name + "{" + str(id) + "};")
+
+        for _, extend in self.extends.items():
+            extend.generate_extend_definition(file)
+        for _, msg in self.messages.items():
+            msg.generate_extend_definition(file)
 
     def generate_source(self, file, ns):
         # Implementation
@@ -395,11 +520,26 @@ class Field:
         else:
             return self.resolved_type.impl_cpp_type
 
+    def generate_extend_helpers(self, file):
+        writeln(file, "// [" + str(self.id) + "] " + self.name + " : " + self.resolved_type.fq_name)
+        writeln(file, "template<>")
+        writeln(file,
+                "inline int ResolveField(::" + self.parent.cpp_extend_namespace() + "::" +
+                    self.name + "_t) { return " + str(self.id) + "; }")
+
+        writeln(file, "template<>")
+        writeln(file,
+                "struct Helper<::" + self.parent.cpp_extend_namespace() + "::" + self.name + "_t> {")
+        writeln(file, "using type = const ::" + self.resolved_type.fq_cpp_ref() + "&;", 1)
+        writeln(file, "using mutable_type = ::" + self.resolved_type.fq_cpp_ref() + "*;", 1)
+        writeln(file, "};")
+        writeln(file, "")
+
     def initializer(self):
         assert(self.is_enum)
         return self.resolved_type.initializer()
 
-        if type(self.resolved_type.parent) is File:
+        if type(self.resolved_type.parent) == File:
             return self.resolved_type.initializer()
 
         return self.resolved_type.parent.impl_cpp_type + "::" + \
@@ -471,7 +611,7 @@ class Field:
             writeln(file,
                     "/* deprecated */ " + "int32_t " + self.name + "_size() const;",
                     indent)
-        writeln(file, "", indent)
+        writeln(file, "")
 
     def generate_accessor_definitions(self, file):
         writeln(file, "// [" + str(self.id) + "] " + self.name)

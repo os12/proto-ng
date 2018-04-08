@@ -86,7 +86,7 @@ def statement(ctx, file_node):
     elif keyword.value == "enum":
         enum_decl(ctx, file_node, file_node.namespace + ".")
     elif keyword.value == "extend":
-        extend(ctx, file_node)
+        extend(ctx, file_node, file_node.namespace + ".")
     else:
         ctx.throw(statement,
                   " Unexpected keyword: " + keyword.value)
@@ -169,10 +169,10 @@ def decl_list(ctx, parent, scope):
             msg = message(ctx, parent, scope)
             continue
 
-        # Provess extensions.
+        # Process extensions.
         if ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extend":
             ctx.consume_keyword(decl_list)
-            extend(ctx, parent)
+            extend(ctx, parent, scope)
             continue
 
         # This must be a normal field declaration.
@@ -201,10 +201,17 @@ def decl(ctx, parent, scope):
         ctx.consume_keyword(decl)
         reserved_decl(ctx, parent, scope)
     elif ctx.scanner.next() == Token.Type.Keyword and ctx.scanner.get().value == "extensions":
+        # extensions 100 to 199;
+        # extensions 100 to max;
         ctx.consume_keyword(decl)
-        ctx.consume_number(decl)
-        ctx.consume_identifier(decl)
-        ctx.consume_identifier(decl)
+        parent.min_extension_id = int(ctx.consume_number(decl).value)
+        tok = ctx.consume_identifier(decl)
+        assert(tok.value == 'to')
+        if ctx.scanner.next() == Token.Type.Keyword:
+            end = ctx.consume_keyword(decl).value
+            assert(end == 'max')
+        else:
+            end = ctx.consume_number(decl)
         ctx.consume_semi(decl)
     else:
         ctx.throw(decl)
@@ -413,21 +420,24 @@ def reserved_decl(ctx, parent, scope):
 
 # Grammar:
 #  <extend>     ::= identifier [ DOT identifier ] SCOPE_OPEN decl_list SCOPE_CLOSE
-def extend(ctx, parent):
-    fq_name = ctx.consume_identifier(extend).value
+def extend(ctx, parent, scope):
+    base_typename = ctx.consume_identifier(extend).value
+    if scope:
+        base_typename = scope + base_typename
+
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
         trailer = ctx.consume_identifier(package)
-        fq_name += "." + trailer.value
+        base_typename += "." + trailer.value
 
-    msg = nodes.Message(fq_name, parent)
+    msg = nodes.Message(base_typename, parent)
     msg.is_extend = True
     ctx.consume_scope_open(extend)
 
     parent.extends[msg.name()] = msg
     log(2, "[parser] consumed an 'extend' : " + msg.fq_name)
 
-    decl_list(ctx, msg, fq_name + ".")
+    decl_list(ctx, msg, base_typename + ".")
     ctx.consume_scope_close(extend)
 
     # protoc is accepts a SEMI here for no apparent reason.

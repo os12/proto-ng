@@ -181,6 +181,7 @@ class Message(Node, gen.Message):
         self.enums = {}
         self.messages = {}
         self.extends = {}
+        self.min_extension_id = None    # set when extensions are enabled for is message
 
         self.impl_cpp_type = None
         self.is_extend = False
@@ -199,32 +200,48 @@ class Message(Node, gen.Message):
     def fq_cpp_ref(self):
         return self.ns + "::" + self.impl_cpp_type
 
+    def cpp_extend_namespace(self):
+        assert(self.is_extend)
+        return "::".join(self.fq_name.split(".")[0:-1])
+
+    def is_file_scope(self):
+        assert(self.parent)
+        return type(self.parent) == File
+
     def as_string(self, namespace):
         assert(namespace)
         assert(namespace[-1] != '.')
 
-        # Skip "extend" as there is no implementation yet. It's not a normal message...
-        if self.is_extend: return "Extend: " + self.fq_name
+        if not self.is_extend:
+            assert(namespace + "." + self.name() == self.fq_name), \
+                "namespace=" + namespace + ", fq_name=" + self.fq_name
 
-        assert(namespace + "." + self.name() == self.fq_name), \
-            "namespace=" + namespace + ", fq_name=" + self.fq_name
-
-        s = indent_from_scope(namespace) + "Message: " + self.print_name()
+        s = indent_from_scope(namespace)
+        if self.is_extend:
+            s += "Extend: " + self.print_name()
+        else:
+            s += "Message: " + self.print_name()
+        if self.is_extend:
+            s += " (extend)"
         if self.impl_cpp_type:
             s+= " // " + self.impl_cpp_type
         s += "\n"
 
         # Fields
-        for id, field in self.fields.items():
+        for _, field in self.fields.items():
             s += field.as_string(namespace + "." + self.name()) + "\n"
 
         # Enums
-        for name, enum in self.enums.items():
+        for _, enum in self.enums.items():
             s += enum.as_string(namespace + "." + self.name()) + "\n"
 
         # Sub-messages
-        for name, sub_msg in self.messages.items():
-            s += sub_msg.as_string(namespace + "." + self.name())
+        for _, msg in self.messages.items():
+            s += msg.as_string(namespace + "." + self.name())
+
+        # Extensions
+        for _, msg in self.extends.items():
+            s += msg.as_string(namespace + "." + self.name())
 
         return s
 
