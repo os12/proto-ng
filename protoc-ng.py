@@ -257,10 +257,10 @@ def map_field_decl(ctx, parent, scope):
         resolved_mapped_type = None
     elif mapped_type.type == Token.Type.Identifier:
         resolved_mapped_type = nodes.find_type(parent, mapped_type.value)
+        this_file_node = nodes.find_file_parent(parent)
         if not resolved_mapped_type:
-            top_file_node = nodes.find_top_parent(parent)
-            this_file_node = nodes.find_file_parent(parent)
-            resolved_mapped_type = top_file_node.resolve_type(this_file_node.namespace, mapped_type.value)
+            resolved_mapped_type = this_file_node.resolve_type(this_file_node.namespace,
+                                                                mapped_type.value)
             if not resolved_mapped_type:
                 sys.exit('Error: failed to resolve type: "' + mapped_type.value + '" in ' +
                      this_file_node.path + ' for the following field: "' + fname.value + '"')

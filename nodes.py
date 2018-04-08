@@ -107,12 +107,24 @@ class File(Node, gen.File):
 
             return None
 
-        # 1. see whether this is a FQ type and take the common prefix off.
+        # 1. See whether this is a FQ type and take the common prefix off.
         if self.namespace and typename[0:len(self.namespace) + 1] == self.namespace + ".":
             typename = typename[len(self.namespace) + 1:]
             return search(self, source_ns, typename)
 
-        # 2. Search for the typename as is.
+        # 2. See whether this is a partial qualification "d.e" that is made from "a.b.c.d.e.f.g"
+        if typename.count(".") > 0:
+            front = typename.split(".")[0]
+            hacked_ns_parts = source_ns.split(".")
+            if front != hacked_ns_parts[0] and front in hacked_ns_parts:
+                while hacked_ns_parts[-1] != front:
+                    hacked_ns_parts.pop(-1)
+                assert(len(hacked_ns_parts) > 1)
+                assert(hacked_ns_parts[-1] == front)
+                hacked_ns_parts.pop(-1)
+                return search(self, ".".join(hacked_ns_parts), typename)
+
+        # 3. Search for the typename as is.
         return search(self, source_ns, typename)
 
     def set_cpp_type_names(self):
@@ -380,13 +392,17 @@ class Field(Node, gen.Field):
             return
 
         resolved_type = find_type(self.parent, self.raw_type)
-        if resolved_type:
-            assert(utils.is_suffix(resolved_type.fq_name, self.raw_type))
-        else:
+        if not resolved_type:
             resolved_type = file_node.resolve_type(file_node.namespace, self.raw_type)
+            if not resolved_type:
+                this_file_node = find_file_parent(self.parent)
+                resolved_type = this_file_node.resolve_type(this_file_node.namespace,
+                                                            self.raw_type)
         if not resolved_type:
             sys.exit('Error: failed to resolve type: "' + self.raw_type + '" in ' +
                      file_node.path + ' for the following field: "' + self.name + '"')
+
+        assert(utils.is_suffix(resolved_type.fq_name, self.raw_type))
 
         file_node.store_external_typename_ref(resolved_type.fq_name)
 
