@@ -223,7 +223,7 @@ def builtin_field_decl(ctx, parent, spec, scope):
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
         tok = ctx.consume_identifier(builtin_field_decl)
-        if tok.value != "default" and tok.value != "deprecated":
+        if not tok.value in ["default", "deprecated", "packed"]:
             ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
         ctx.consume_equals(message_field_decl)
         ctx.consume()

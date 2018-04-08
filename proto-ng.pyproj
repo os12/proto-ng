@@ -13,7 +13,7 @@
     <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <InterpreterId>Global|PythonCore|3.6</InterpreterId>
-    <CommandLineArguments>--cpp_out build/_protoc-ng/ -I . -I /cygdrive/c/dev/toolchain/x86_64-windows/protobuf-3.0.0/include magneto/base/magneto.proto -v</CommandLineArguments>
+    <CommandLineArguments>--cpp_out build/_protoc-ng/ -I . -I /cygdrive/c/dev/toolchain/x86_64-windows/protobuf-3.0.0/include magneto/agents/windows/base/hyperv.proto -v</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
     <Name>proto-ng</Name>
     <IsWindowsApplication>False</IsWindowsApplication>

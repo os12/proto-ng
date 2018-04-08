@@ -238,6 +238,10 @@ class Message:
                 "static const " + self.impl_cpp_type + "& " + "default_instance();",
                 indent + 1)
         writeln(file, "void Clear() { *this = default_instance(); }", indent + 1)
+        writeln(file, "bool ParseFromString(const std::string& input_data);", indent + 1)
+        writeln(file, "std::string SerializeAsString() const;", indent + 1)
+        writeln(file, "std::string DebugString() const;", indent + 1)
+        writeln(file, "std::string ShortDebugString() const;", indent + 1)
         writeln(file, "")
 
         # Aliases for sub-messages
@@ -429,8 +433,7 @@ class Field:
                     indent)
             if not args.omit_deprecated:
                 writeln(file,
-                        "/* deprecated */ auto mutable_" + self.name + "() { " + \
-                            " return &" + self.name + "(); }",
+                        "/* deprecated */ " + self.cpp_type_ref() + "* mutable_" + self.name + "();",
                         indent)
 
         if not self.is_container():
@@ -439,8 +442,7 @@ class Field:
 
         if self.is_container() and not args.omit_deprecated:
             writeln(file,
-                    "/* deprecated */ " + "void clear_" + self.name + "() { " + \
-                        self.name + "().clear(); }",
+                    "/* deprecated */ " + "void clear_" + self.name + "();",
                     indent)
 
         if self.is_repeated and not args.omit_deprecated:
@@ -465,6 +467,9 @@ class Field:
                 writeln(file,
                     "/* deprecated */ " + \
                         "const " + self.base_cpp_type_ref() + "& " + self.name + "(int idx) const;",
+                    indent)
+            writeln(file,
+                    "/* deprecated */ " + "int32_t " + self.name + "_size() const;",
                     indent)
         writeln(file, "", indent)
 
