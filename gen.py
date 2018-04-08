@@ -563,6 +563,10 @@ class Field:
             return self.resolved_type.impl_cpp_type
 
     def generate_extend_helpers(self, file):
+        # TODO(Oleg): get base types working here.
+        if not self.resolved_type:
+            return
+
         writeln(file, "// [" + str(self.id) + "] " + self.name + " : " + self.resolved_type.fq_name)
         writeln(file, "template<>")
         writeln(file,
