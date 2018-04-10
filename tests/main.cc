@@ -1,4 +1,5 @@
 #include <cassert>
+#include <iostream>
 
 #include <thing/ext.pbng.h>
 #include <thing/thing.pbng.h>
@@ -27,5 +28,26 @@ int main() {
         p.MutableExtension(thing::NestedExtension::ext200);
   }
 
+  thing::Person p1, p2;
+  assert(p1 == p2);
+  assert(!(p1 != p2));
+  assert(p1 == thing::Person::default_instance());
+  p1.set_id(5);
+  assert(p1 > p2);
+  assert(p1 != p2);
+
+  p1.set_id(0);
+  assert(p1 == p2);     // a proto3-style check - it's a scalar with the default value
+  p1.clear_id();
+  assert(p1 == p2);
+
+  p1.set_ph_type_v3(thing::Person::PhoneNumber::WORK);
+  assert(p1 > p2);
+  p1.set_ph_type_v3(thing::Person::PhoneNumber::MOBILE); // a proto3-style check - "0" is default
+  assert(p1 == p2);
+
+  assert(p1 == thing::Person::default_instance());
+
+  std::cout << "All good!\n";
   return 0;
 }

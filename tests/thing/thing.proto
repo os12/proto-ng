@@ -25,8 +25,8 @@ message Person {
      * a C-style comment
      */
     enum InnerPhoneType {
-      MOBILE = 0;
       HOME = 1;
+      MOBILE = 0;
       WORK = 2;
     }
 
@@ -39,7 +39,8 @@ message Person {
   repeated PhoneNumber phone_vec = 4;
 
   // Partially qualified type references
-  PhoneNumber.InnerPhoneType ph_type = 10 [default = MOBILE ];
+  PhoneNumber.InnerPhoneType ph_type_v2 = 10 [ default = HOME ];
+  PhoneNumber.InnerPhoneType ph_type_v3 = 11;
 
   // Imported messages
   google.protobuf.Timestamp timestamp = 5;

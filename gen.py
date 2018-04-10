@@ -287,11 +287,36 @@ class Message:
         writeln(file,
                 "static const " + self.impl_cpp_type + "& " + "default_instance();",
                 indent + 1)
-        writeln(file, "void Clear() { *this = default_instance(); }", indent + 1)
+        writeln(file, "void Clear();", indent + 1)
         writeln(file, "bool ParseFromString(const std::string& input_data);", indent + 1)
         writeln(file, "std::string SerializeAsString() const;", indent + 1)
         writeln(file, "std::string DebugString() const;", indent + 1)
         writeln(file, "std::string ShortDebugString() const;", indent + 1)
+        writeln(file, "")
+
+        # Equality
+        writeln(file, "// This type is Regular and totally ordered.", indent + 1)
+        writeln(file, "bool operator<(const " + self.impl_cpp_type + "&) const;", indent + 1)
+        writeln(file,
+                "friend bool operator>=(const " + self.impl_cpp_type + "& a, " +
+                    "const " + self.impl_cpp_type + "& b) { return !(a < b); }",
+                    indent + 1)
+        writeln(file,
+                "friend bool operator>(const " + self.impl_cpp_type + "& a, " +
+                    "const " + self.impl_cpp_type + "& b) { return b < a; }",
+                    indent + 1)
+        writeln(file,
+                "friend bool operator<=(const " + self.impl_cpp_type + "& a, " +
+                    "const " + self.impl_cpp_type + "& b) { return !(b > a); }",
+                    indent + 1)
+        writeln(file,
+                "friend bool operator==(const " + self.impl_cpp_type + "& a, " +
+                    "const " + self.impl_cpp_type + "& b) { return !(a > b) && !(a < b); }",
+                    indent + 1)
+        writeln(file,
+                "friend bool operator!=(const " + self.impl_cpp_type + "& a, " +
+                    "const " + self.impl_cpp_type + "& b) { return !(a == b); }",
+                    indent + 1)
         writeln(file, "")
 
         # Extension support
@@ -443,7 +468,7 @@ class Message:
         writeln(file, "")
         if len(self.fields) > 0:
             writeln(file,
-                    "std::bitset<" + str(list(self.fields.keys())[-1] + 1) + "> _Presence;",
+                    "std::bitset<" + str(sorted(self.fields.keys())[-1] + 1) + "> _Presence;",
                     1)
         writeln(file, "};\n")
 
@@ -466,9 +491,26 @@ class Message:
         writeln(file, self.impl_cpp_type + "::~" + self.impl_cpp_type + "() = default;")
         writeln(file, "")
 
-        writeln(file, " const " + self.impl_cpp_type + "& " + self.impl_cpp_type + "::default_instance() {")
+        writeln(file, "const " + self.impl_cpp_type + "& " + self.impl_cpp_type + "::default_instance() {")
         writeln(file, "static " + self.impl_cpp_type + " obj;", 1)
         writeln(file, "return obj;", 1)
+        writeln(file, "}")
+        writeln(file, "")
+
+        writeln(file, "void " + self.impl_cpp_type + "::Clear() {")
+        writeln(file, "*this = default_instance();", 1)
+        writeln(file, "rep_->_Presence.reset();", 1)
+        writeln(file, "}")
+        writeln(file, "")
+
+        # The key comparison operator on which Regular semantics are built
+        writeln(file,
+                "bool " + self.impl_cpp_type + "::operator<(const " + self.impl_cpp_type +
+                    "& arg) const {")
+        # Field accessors for the given message
+        for _, field in self.fields.items():
+            field.generate_less_check(file, 1)
+        writeln(file, "return false;", 1)
         writeln(file, "}")
         writeln(file, "")
 
@@ -715,3 +757,23 @@ class Field:
                 self.initializer() + ";", 1)
         else:
             writeln(file, self.cpp_type_ref() + " " + self.name + ";", 1)
+
+    def generate_less_check(self, file, indent):
+        writeln(file, "// [" + str(self.id) + "] " + self.name, indent)
+
+        '''
+        # This may be used to implement equality that takes presence into account
+        if not self.is_container() and self.is_enum:
+            writeln(file,
+                    "if (rep_->_Presence.test(" + str(self.id) +
+                        ") != arg.rep_->_Presence.test(" + str(self.id) + "))",
+                    indent)
+            writeln(file, "return arg.rep_->_Presence.test(" + str(self.id) + ");",
+                    indent + 1)
+        '''
+
+        writeln(file,
+                "if (rep_->" + self.name + " < arg.rep_->" + self.name + ")",
+                indent)
+        writeln(file, "return true;", indent + 1)
+        writeln(file, "")
