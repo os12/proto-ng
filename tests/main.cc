@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <set>
 
 #include <thing/ext.pbng.h>
 #include <thing/thing.pbng.h>
@@ -26,6 +27,13 @@ int main() {
     p.HasExtension(thing::NestedExtension::ext200);
     thing::NestedExtension *next =
         p.MutableExtension(thing::NestedExtension::ext200);
+  }
+
+  {
+    thing::Person p;
+    p.set_id(5);
+    std::set<thing::Person> set = {p};
+    assert(set.size() == 1);
   }
 
   thing::Person p1, p2;
