@@ -409,7 +409,7 @@ def reserved_decl(ctx, parent, scope):
         while ctx.scanner.next() == Token.Type.Coma:
             ctx.consume()
             ctx.consume_number(reserved_decl)
-    elif ctx.scanner.next() == Token.Type.Identifier:
+    elif ctx.scanner.next() == Token.Type.Keyword:
         to = ctx.consume_identifier(reserved_decl)
         if to.value != "to":
             ctx.throw("Expected \"to\".")
