@@ -5,9 +5,11 @@ CXX_OPTIONS := -std=c++14 -I build -g
 
 all: build/test
 
-build/test: build/thing/thing.pbng.o \
+build/test: build/google/protobuf/timestamp.pbng.o \
+	    build/thing/thing.pbng.o \
 	    build/thing/ext.pbng.o \
-	    build/google/protobuf/timestamp.pbng.o \
+	    build/thing/base.pbng.o \
+	    build/thing/ext_base.pbng.o \
 	    build/main.o
 	g++ -o build/test $^
 
@@ -18,6 +20,12 @@ build/thing/ext.pbng.cc: thing/ext.proto thing/thing.proto
 	$(PROTOC) $(PROTOC_OPTIONS) $(PROTOC_OPTIONS_EXTRA) $<
 build/thing/thing.pbng.cc: thing/thing.proto google/protobuf/timestamp.proto
 	$(PROTOC) $(PROTOC_OPTIONS) $(PROTOC_OPTIONS_EXTRA) $<
+
+build/thing/ext_base.pbng.cc: thing/ext_base.proto thing/base.proto
+	$(PROTOC) $(PROTOC_OPTIONS) $(PROTOC_OPTIONS_EXTRA) $<
+build/thing/base.pbng.cc: thing/base.proto
+	$(PROTOC) $(PROTOC_OPTIONS) $(PROTOC_OPTIONS_EXTRA) $<
+
 build/google/protobuf/timestamp.pbng.cc: google/protobuf/timestamp.proto
 	$(PROTOC) $(PROTOC_OPTIONS) $(PROTOC_OPTIONS_EXTRA) $<
 

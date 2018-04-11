@@ -326,20 +326,37 @@ class Message:
             writeln(file, "bool HasExtension(Extension ext) const {", indent + 1)
             writeln(file, "return _HasField(::proto_ng::detail::ResolveField(ext));", indent + 2)
             writeln(file, "}", indent + 1)
+
             writeln(file, "template<class Extension>", indent + 1)
             writeln(file,
-                    "typename ::proto_ng::detail::Helper<Extension>::mutable_type " +
+                    "typename ::proto_ng::detail::Helper<Extension>::mutable_ptr " +
                         "MutableExtension(Extension ext) {",
                     indent + 1)
             writeln(file, "if (!HasExtension(ext)) return nullptr;", indent + 2)
             writeln(file,
-                    "return reinterpret_cast<typename ::proto_ng::detail::Helper<Extension>::mutable_type>(",
-                    indent + 3)
+                    "return reinterpret_cast<typename ::proto_ng::detail::Helper<Extension>::mutable_ptr>(",
+                    indent + 2)
             writeln(file, "_GetField(::proto_ng::detail::ResolveField(ext)));", indent + 3)
+            writeln(file, "}", indent + 1)
+
+            writeln(file, "template<class Extension>", indent + 1)
+            writeln(file,
+                    "typename ::proto_ng::detail::Helper<Extension>::ref " +
+                        "GetExtension(Extension ext) const {",
+                    indent + 1)
+            writeln(file, "assert(HasExtension(ext));", indent + 2)
+            writeln(file,
+                    "auto ptr = reinterpret_cast<typename ::proto_ng::detail::Helper<Extension>::ptr>(",
+                    indent + 2)
+            writeln(file, "_GetField(::proto_ng::detail::ResolveField(ext)));", indent + 3)
+            writeln(file,
+                    "return *ptr;", indent + 2)
+
             writeln(file, "}", indent + 1)
 
             writeln(file, "bool _HasField(int id) const { return false; }", indent + 1)
             writeln(file, "void* _GetField(int id) { return nullptr; }", indent + 1)
+            writeln(file, "const void* _GetField(int id) const { return nullptr; }", indent + 1)
             writeln(file, "")
 
         # Extensions
@@ -576,8 +593,9 @@ class Field:
         writeln(file, "template<>")
         writeln(file,
                 "struct Helper<::" + self.parent.cpp_extend_namespace() + "::" + self.name + "_t> {")
-        writeln(file, "using type = const ::" + self.resolved_type.fq_cpp_ref() + "&;", 1)
-        writeln(file, "using mutable_type = ::" + self.resolved_type.fq_cpp_ref() + "*;", 1)
+        writeln(file, "using ref = const ::" + self.resolved_type.fq_cpp_ref() + "&;", 1)
+        writeln(file, "using ptr = const ::" + self.resolved_type.fq_cpp_ref() + "*;", 1)
+        writeln(file, "using mutable_ptr = ::" + self.resolved_type.fq_cpp_ref() + "*;", 1)
         writeln(file, "};")
         writeln(file, "")
 

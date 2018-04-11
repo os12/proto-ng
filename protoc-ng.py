@@ -421,23 +421,30 @@ def reserved_decl(ctx, parent, scope):
 # Grammar:
 #  <extend>     ::= identifier [ DOT identifier ] SCOPE_OPEN decl_list SCOPE_CLOSE
 def extend(ctx, parent, scope):
-    base_typename = ctx.consume_identifier(extend).value
-    if scope:
-        base_typename = scope + base_typename
+    assert(scope)
 
+    base_typename = ctx.consume_identifier(extend).value
     while ctx.scanner.next() == Token.Type.Dot:
         ctx.consume()
         trailer = ctx.consume_identifier(package)
         base_typename += "." + trailer.value
 
-    msg = nodes.Message(base_typename, parent)
+    this_file_node = nodes.find_file_parent(parent)
+
+    resolved_type = this_file_node.resolve_type(this_file_node.namespace, base_typename)
+    if not resolved_type:
+        sys.exit('Error: failed to resolve type: "' + base_typename + ' for an "extend" in '+
+                 this_file_node.path)
+
+    msg = nodes.Message(scope + "$extend$", parent)
     msg.is_extend = True
+    msg.base_type = resolved_type
     ctx.consume_scope_open(extend)
 
     parent.extends[msg.name()] = msg
-    log(2, "[parser] consumed an 'extend' : " + msg.fq_name)
+    log(2, "[parser] consumed an 'extend' : " + msg.fq_name + " for " + resolved_type.fq_name)
 
-    decl_list(ctx, msg, base_typename + ".")
+    decl_list(ctx, msg, msg.fq_name + ".")
     ctx.consume_scope_close(extend)
 
     # protoc is accepts a SEMI here for no apparent reason.

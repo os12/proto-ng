@@ -1,0 +1,19 @@
+package a.b.x.y;
+
+import "thing/base.proto";
+
+message GlobalExtension {
+  int32 eg_field = 1;
+}
+
+extend b.c.d.Base {
+  GlobalExtension ext1 = 1000;     // package-global extension id
+}
+
+message Extension {
+  extend b.c.d.Base {
+    Extension ext2 = 1001;    // nested extension id
+  }
+
+  int32 en_field = 1;
+}

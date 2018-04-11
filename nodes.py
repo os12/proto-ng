@@ -430,7 +430,7 @@ class Field(Node, gen.Field):
 
 
 # Looks for the given field type 'typname' in the ever-widening message scopes (from inside
-# out).
+# out) in the current translation unit.
 #
 # This function finds anything that can be used as a field:
 #   - message
