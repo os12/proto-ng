@@ -36,6 +36,7 @@ def parse_file(path, parent = None):
     file_ast = file(ctx, parent)
     assert(ctx.scanner.reached_eof())
     file_ast.set_cpp_type_names()
+    file_ast.build_typename_cache()
 
     scanner.Context.global_file_dict[path] = file_ast
 

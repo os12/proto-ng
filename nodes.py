@@ -33,6 +33,9 @@ class File(Node, gen.File):
         self.imports = {}
         self.imported_type_names = set()
 
+        # A cache of FQ typenames that live within this file
+        self.typenames = {}
+
         assert(self.path)
         assert(self.path.count('\\') == 0), "Got a Windows path: " + self.path
 
@@ -78,18 +81,17 @@ class File(Node, gen.File):
     def resolve_type(self, source_ns, typename):
         assert(typename)
 
-        def search(self, source_ns, typename):
-            parts = typename.split('.')
-            assert(len(parts) > 0)
+        def search_file(ast, source_ns, typename):
+            if typename in ast.typenames:
+                return ast.typenames[typename]
 
-            if len(parts) == 1 and parts[0] in self.enums:
-                return self.enums[parts[0]]
+            # 1. see whether this typename is known (it would be a FQ typename)
+            for file_name, file_ast in ast.imports.items():
+                if typename in file_ast.typenames:
+                    return file_ast.typenames[typename]
 
-            if parts[0] in self.messages:
-                t = self.messages[parts[0]].resolve_type(source_ns, ".".join(parts))
-                if t: return t
-
-            for file_name, file_ast in self.imports.items():
+            # 2. then take the common namespace prefix off and see whether the remainder is known
+            for file_name, file_ast in ast.imports.items():
                 src_parts = source_ns.split(".")
                 dst_parts = file_ast.namespace.split(".")
                 prefix_parts = []
@@ -99,20 +101,13 @@ class File(Node, gen.File):
                     prefix_parts.append(src_parts.pop(0))
                     dst_parts.pop(0)
                 if len(prefix_parts) > 0:
-                    t = file_ast.resolve_type(source_ns, ".".join(prefix_parts) + "." + typename)
-                    if t: return t
-
-                t = file_ast.resolve_type(source_ns, ".".join(parts))
-                if t: return t
+                    guess = ".".join(prefix_parts) + "." + typename
+                    if guess in file_ast.typenames:
+                        return file_ast.typenames[guess]
 
             return None
 
-        # 1. See whether this is a FQ type and take the common prefix off.
-        if self.namespace and typename[0:len(self.namespace) + 1] == self.namespace + ".":
-            typename = typename[len(self.namespace) + 1:]
-            return search(self, source_ns, typename)
-
-        # 2. See whether this is a partial qualification "d.e" that is made from "a.b.c.d.e.f.g"
+        # 1. See whether this is a partial qualification "d.e" that is made from "a.b.c.d.e.f.g"
         if typename.count(".") > 0:
             front = typename.split(".")[0]
             hacked_ns_parts = source_ns.split(".")
@@ -122,10 +117,10 @@ class File(Node, gen.File):
                 assert(len(hacked_ns_parts) > 1)
                 assert(hacked_ns_parts[-1] == front)
                 hacked_ns_parts.pop(-1)
-                return search(self, ".".join(hacked_ns_parts), typename)
+                return search_file(self, ".".join(hacked_ns_parts), typename)
 
-        # 3. Search for the typename as is.
-        return search(self, source_ns, typename)
+        # 2. Search for the typename as is.
+        return search_file(self, source_ns, typename)
 
     def set_cpp_type_names(self):
         assert(self.namespace)
@@ -140,6 +135,13 @@ class File(Node, gen.File):
     def verify_type_references(self):
         for _, msg in self.messages.items():
             msg.verify_type_references(self)
+
+    def build_typename_cache(self):
+        for _, enum in self.enums.items():
+            enum.build_typename_cache(self.typenames)
+
+        for _, msg in self.messages.items():
+            msg.build_typename_cache(self.typenames)
 
 
 class Syntax(Node):
@@ -207,6 +209,16 @@ class Message(Node, gen.Message):
     def is_file_scope(self):
         assert(self.parent)
         return type(self.parent) == File
+
+    def build_typename_cache(self, cache):
+        assert(self.fq_name not in cache)
+        cache[self.fq_name] = self
+
+        for _, enum in self.enums.items():
+            enum.build_typename_cache(cache)
+
+        for _, msg in self.messages.items():
+            msg.build_typename_cache(cache)
 
     def as_string(self, namespace):
         assert(namespace)
@@ -311,6 +323,10 @@ class Enum(Node, gen.Enum):
             return self.fq_name
         else:
             return self.name()
+
+    def build_typename_cache(self, cache):
+        assert(self.fq_name not in cache)
+        cache[self.fq_name] = self
 
     def as_string(self, namespace):
         assert(namespace)
