@@ -74,6 +74,18 @@ int main() {
     assert(!rv.second);
     assert(*rv.first == b2);
     assert(*rv.first != b1);
+
+    // equivalence
+    auto b3 = b2;
+    assert(b2 == b3);
+    assert(std::equal_to<thing::Block>()(b2, b3));
+    b3.set_email("foobar@domain");
+    assert(std::equal_to<thing::Block>()(b2, b3));
+    assert(b2 != b3);
+    rv = set.insert(b3);
+    assert(!rv.second);
+    assert(std::equal_to<thing::Block>()(*rv.first, b3));
+    assert(*rv.first == b2);
   }
 
   std::cout << "All good!\n";

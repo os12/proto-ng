@@ -140,9 +140,10 @@ class File:
             writeln(file, "} }")
             writeln(file, "")
 
-        # Hashing support
+        # Hashing and equivalence support
         for _, msg in self.messages.items():
             msg.generate_hasher(file)
+            msg.generate_equivalence(file)
 
     def generate_forward_imported_declarations_header(self, file):
         # First build sets of the enums/messages used by this File.
@@ -421,11 +422,12 @@ class Message:
         if not with_hashing: return
 
         writeln(file, "namespace std {", indent)
-        writeln(file, "template <>", indent)
+        writeln(file, "// Hashing for " + self.fq_name)
+        writeln(file, "template<>", indent)
         writeln(file, "struct hash<" + self.fq_cpp_ref() + "> {", indent)
         writeln(file, "using argument_type = " + self.fq_cpp_ref() + ";", indent + 1)
         writeln(file, "using result_type = std::size_t;", indent + 1)
-        writeln(file, "size_t operator()(argument_type const& arg) const noexcept {", indent + 1)
+        writeln(file, "size_t operator()(const argument_type& arg) const noexcept {", indent + 1)
         writeln(file, "size_t hash = 0;", indent + 2)
 
         for _, field in self.fields.items():
@@ -435,6 +437,39 @@ class Message:
                             indent + 2)
                     break
         writeln(file, "return hash;", indent + 2)
+        writeln(file, "}", indent + 1)
+
+        writeln(file, "};", indent)
+        writeln(file, "}  // std", indent)
+        writeln(file, "")
+
+    def generate_equivalence(self, file, indent = 0):
+        with_hashing = False
+        for _, field in self.fields.items():
+            for name, value in field.options.items():
+                if name.find("include_in_equivalence") >= 0:
+                    with_hashing = True
+        if not with_hashing: return
+
+        writeln(file, "namespace std {", indent)
+        writeln(file, "// Equivalence for " + self.fq_name)
+        writeln(file, "template<>", indent)
+        writeln(file, "struct equal_to<" + self.fq_cpp_ref() + "> {", indent)
+        writeln(file, "using result_type = bool;", indent + 1)
+        writeln(file, "using first_argument_type = " + self.fq_cpp_ref() + ";", indent + 1)
+        writeln(file, "using second_argument_type = " + self.fq_cpp_ref() + ";", indent + 1)
+        writeln(file,
+                "size_t operator()(const %s& a, const %s& b) const noexcept {" %
+                    (self.fq_cpp_ref(), self.fq_cpp_ref()),
+                indent + 1)
+
+        for _, field in self.fields.items():
+            for name, value in field.options.items():
+                if name.find("include_in_equivalence") >= 0:
+                    writeln(file, "if (a." + field.name + "() != b." + field.name + "()) return false;",
+                            indent + 2)
+                    break
+        writeln(file, "return true;", indent + 2)
         writeln(file, "}", indent + 1)
 
         writeln(file, "};", indent)
