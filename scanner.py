@@ -47,6 +47,7 @@ class Scanner:
     data_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'string', 'bool',
                  'bytes']
     specifiers = ['repeated', 'optional', 'required', 'map']
+    known_field_options = ["default", "deprecated", "packed", "include_in_hash"]
 
     def __init__(self, file_path, flags = 0):
         import collections, re

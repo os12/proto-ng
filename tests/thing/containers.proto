@@ -1,0 +1,16 @@
+import "google/protobuf/descriptor.proto";
+
+package thing;
+
+extend google.protobuf.FieldOptions {
+  optional bool include_in_hash = 60000 [ default = false ];
+}
+
+message Block {
+  // Unique ID each object. Mandatory.
+  int32 id = 1 [ (include_in_hash) = true ];
+
+  string name = 2;
+  string email = 3;
+}
+

@@ -13,12 +13,13 @@ class Node:
         self.fq_name = None
 
 class File(Node, gen.File):
-    def __init__(self, fs_path, parent):
+    def __init__(self, full_fs_path, include, parent):
         Node.__init__(self)
         gen.File.__init__(self)
 
         self.parent = parent
-        self.path = fs_path
+        self.path = full_fs_path
+        self.include = include
         self.namespace = ""
         self.syntax = None
 
@@ -45,8 +46,16 @@ class File(Node, gen.File):
     def cpp_include_path(self):
         assert(self.path[-6:] == ".proto")
 
+        # Drop the "include" path from the full path as the C++ environment must have -I options
+        # configured in a way compatible to that of protobuf.
+        path = self.path
+        inc_pos = path.find(self.include)
+        if inc_pos != -1:
+            assert(inc_pos == 0), "pos: " + str(inc_pos)
+            path = path[len(self.include):]
+
         global args
-        return self.path[0:-5] + args.file_extension + ".h"
+        return path[0:-5] + args.file_extension + ".h"
 
     def store_external_typename_ref(self, fq_type_name):
         # Ideally, this typename should be stored against the import, but I don't know

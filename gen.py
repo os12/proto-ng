@@ -22,14 +22,14 @@ def open_file(path):
 #
 # TODO: need to figure out whether this function must merge path
 #   - 'proto_name' may have a common prefix with 'out_path'...
-def get_cpp_file_paths(proto_name, out_path):
+def get_cpp_file_paths(file_ast, out_path):
     assert(out_path)
     if out_path[-1] != "/" and out_path[-1] != "\\":
         out_path += "/"
-    parts = proto_name.split('.')
-    assert(parts[-1] == "proto")
+
+    parts = file_ast.cpp_include_path().split('.')
+    assert(parts[-1] == "h")
     parts.pop(-1)
-    parts.append(args.file_extension)
     return Filename(out_path + ".".join(parts) + ".cc",
                     out_path + ".".join(parts) + ".h")
 
@@ -58,7 +58,7 @@ class File:
 
     def generate(self, out_path):
         log(0, "Generating C++ code for " + self.path)
-        fname = get_cpp_file_paths(self.path, out_path)
+        fname = get_cpp_file_paths(self, out_path)
         self.generate_header(fname.h)
         self.generate_source(fname.cc)
 
@@ -165,7 +165,8 @@ class File:
         writeln(file, "#include <bitset>")
         writeln(file, "")
 
-        # Include directives. At this point we need every generated type.
+        # Include directives. At this point we need every generated type that comes from
+        # every "import" statement.
         writeln(file, "#include <" + self.cpp_include_path() + ">")
         for _, file_ast in self.imports.items():
             writeln(file, "#include <" + file_ast.cpp_include_path() + ">")

@@ -12,8 +12,9 @@ from utils import indent_from_scope, log
 def parse_file(path, parent = None):
     import os.path
 
-    # First fine the file. Let's start with the given path and then search
+    # First find the file. Let's start with the given path and then search
     # the 'includes'.
+    include = "./"
     if not os.path.isfile(path):
         for inc in args.include:
             next_path = inc
@@ -21,8 +22,12 @@ def parse_file(path, parent = None):
             if next_path[-1] != '/':
                 next_path += '/'
             next_path += path
+
             if os.path.isfile(next_path):
                 path = next_path
+                include = inc
+                if include[-1] != '/':
+                    include += '/'
                 break
 
     if path in scanner.Context.global_file_dict.keys():
@@ -33,7 +38,7 @@ def parse_file(path, parent = None):
         raise ValueError("Nothing to parse!")
 
     ctx = scanner.Context(s)
-    file_ast = file(ctx, parent)
+    file_ast = file(ctx, path, include, parent)
     assert(ctx.scanner.reached_eof())
     file_ast.set_cpp_type_names()
     file_ast.build_typename_cache()
@@ -44,11 +49,11 @@ def parse_file(path, parent = None):
 
 # Grammar:
 #  <input>         ::= <statement> [ <statement> ] EOF
-def file(ctx, parent):
+def file(ctx, full_fs_path, include, parent):
     if ctx.scanner.reached_eof():
         raise ValueError("Reached EoF while parsing the 'file' rule")
 
-    file = nodes.File(ctx.scanner.file_path, parent)
+    file = nodes.File(full_fs_path, include, parent)
     while not ctx.scanner.reached_eof():
         statement(ctx, file)
 
@@ -230,9 +235,20 @@ def builtin_field_decl(ctx, parent, spec, scope):
 
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
+
+        # User-defined options have parens.
+        user_defined = False
+        if ctx.scanner.next() == Token.Type.ParenOpen:
+            ctx.consume_paren_open(builtin_field_decl)
+            user_defined = True
+
         tok = ctx.consume_identifier(builtin_field_decl)
-        if not tok.value in ["default", "deprecated", "packed"]:
+        if not tok.value in scanner.Scanner.known_field_options:
             ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
+
+        if user_defined:
+            ctx.consume_paren_close(builtin_field_decl)
+
         ctx.consume_equals(message_field_decl)
         ctx.consume()
         tok = ctx.consume_square_close(builtin_field_decl)
