@@ -65,6 +65,7 @@ class File:
         file = open_file(args.cpp_out + "/infra.h")
 
         writeln(file, "#pragma once")
+        writeln(file, "#include <functional>")
         writeln(file, "")
         writeln(file, "namespace proto_ng {")
         writeln(file, "// Support for extensions")
@@ -74,6 +75,14 @@ class File:
         writeln(file, "template<typename Extension>")
         writeln(file, "inline int ResolveField(Extension) { return -1; }")
         writeln(file, "}  // detail")
+        writeln(file, "")
+
+        writeln(file, "template <typename T>")
+        writeln(file, "inline void hash_combine(std::size_t& seed, const T& v) {")
+        writeln(file, "  seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);")
+        writeln(file, "}")
+        writeln(file, "")
+
         writeln(file, "}  // proto_ng")
         writeln(file, "")
 
@@ -130,6 +139,10 @@ class File:
                 msg.generate_extend_helpers(file)
             writeln(file, "} }")
             writeln(file, "")
+
+        # Hashing support
+        for _, msg in self.messages.items():
+            msg.generate_hasher(file)
 
     def generate_forward_imported_declarations_header(self, file):
         # First build sets of the enums/messages used by this File.
@@ -398,6 +411,35 @@ class Message:
         # the tree.
         for _, sub_msg in self.messages.items():
             sub_msg.generate_header(file, ns)
+
+    def generate_hasher(self, file, indent = 0):
+        with_hashing = False
+        for _, field in self.fields.items():
+            for name, value in field.options.items():
+                if name == "include_in_hash":
+                    with_hashing = True
+        if not with_hashing: return
+
+        writeln(file, "namespace std {", indent)
+        writeln(file, "template <>", indent)
+        writeln(file, "struct hash<" + self.fq_cpp_ref() + "> {", indent)
+        writeln(file, "using argument_type = " + self.fq_cpp_ref() + ";", indent + 1)
+        writeln(file, "using result_type = std::size_t;", indent + 1)
+        writeln(file, "size_t operator()(argument_type const& arg) const noexcept {", indent + 1)
+        writeln(file, "size_t hash = 0;", indent + 2)
+
+        for _, field in self.fields.items():
+            for name, value in field.options.items():
+                if name == "include_in_hash":
+                    writeln(file, "::proto_ng::hash_combine(hash, arg." + field.name + "());",
+                            indent + 2)
+                    break
+        writeln(file, "return hash;", indent + 2)
+        writeln(file, "}", indent + 1)
+
+        writeln(file, "};", indent)
+        writeln(file, "}  // std", indent)
+        writeln(file, "")
 
     def generate_forward_declarations(self, file):
         # Forward declarations for sub-messages and enums.

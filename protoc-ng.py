@@ -232,6 +232,9 @@ def builtin_field_decl(ctx, parent, spec, scope):
     fname = ctx.consume_identifier(builtin_field_decl)
     ctx.consume_equals(builtin_field_decl)
     fid = ctx.consume_number(builtin_field_decl)
+    log(2, "[parser] " + indent_from_scope(scope) + "consumed a built-in 'field' declaration: " + fname.value)
+
+    options = {}
 
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
@@ -242,16 +245,19 @@ def builtin_field_decl(ctx, parent, spec, scope):
             ctx.consume_paren_open(builtin_field_decl)
             user_defined = True
 
-        tok = ctx.consume_identifier(builtin_field_decl)
-        if not tok.value in scanner.Scanner.known_field_options:
-            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + tok.value)
+        opt_tok = ctx.consume_identifier(builtin_field_decl)
+        if not opt_tok.value in scanner.Scanner.known_field_options:
+            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + opt_tok.value)
 
         if user_defined:
             ctx.consume_paren_close(builtin_field_decl)
 
         ctx.consume_equals(message_field_decl)
-        ctx.consume()
-        tok = ctx.consume_square_close(builtin_field_decl)
+        opt_value_tok = ctx.consume()
+        options[opt_tok.value] = opt_value_tok.value
+        log(2, "[parser] " + indent_from_scope(scope + ".a") + "consumed an option: " + opt_tok.value)
+
+        ctx.consume_square_close(builtin_field_decl)
     ctx.consume_semi(builtin_field_decl)
 
     field_ast = nodes.Field(fname.value,
@@ -259,9 +265,10 @@ def builtin_field_decl(ctx, parent, spec, scope):
                             ftype, None,
                             spec)
     field_ast.parent = parent
+    if len(options) > 0:
+        field_ast.options = options
 
     parent.fields[int(fid.value)] = field_ast
-    log(2, "[parser] " + indent_from_scope(scope) + "consumed a built-in 'field' declaration: " + fname.value)
 
 
 # Grammar:

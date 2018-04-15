@@ -359,8 +359,11 @@ class Field(Node, gen.Field):
 
         self.name = name
         self.id = id
+        self.options = {}
+
         self.raw_type = raw_type
         self.resolved_type = resolved_type
+
         self.is_forward_decl = False
         self.is_map = False
         self.is_repeated = False

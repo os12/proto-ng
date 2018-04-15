@@ -1,7 +1,9 @@
 #include <cassert>
 #include <iostream>
+#include <unordered_set>
 #include <set>
 
+#include <thing/containers.pbng.h>
 #include <thing/ext.pbng.h>
 #include <thing/thing.pbng.h>
 
@@ -55,6 +57,24 @@ int main() {
   assert(p1 == p2);
 
   assert(p1 == thing::Person::default_instance());
+
+  // Hashing
+  std::unordered_set<thing::Block> set;
+  {
+    thing::Block b1;
+    b1.set_id(1);
+    set.insert(b1);
+    assert(set.count(b1) == 1);
+
+    thing::Block b2;
+    b2.set_id(2);
+    set.insert(b2);
+    assert(set.count(b2) == 1);
+    auto rv = set.insert(b2);
+    assert(!rv.second);
+    assert(*rv.first == b2);
+    assert(*rv.first != b1);
+  }
 
   std::cout << "All good!\n";
   return 0;
