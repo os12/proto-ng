@@ -239,25 +239,35 @@ def builtin_field_decl(ctx, parent, spec, scope):
     if ctx.scanner.next() == Token.Type.SquareOpen:
         ctx.consume()
 
-        # User-defined options have parens.
-        user_defined = False
-        if ctx.scanner.next() == Token.Type.ParenOpen:
-            ctx.consume_paren_open(builtin_field_decl)
-            user_defined = True
+        while True:
+            # User-defined options have parens.
+            user_defined = False
+            if ctx.scanner.next() == Token.Type.ParenOpen:
+                ctx.consume_paren_open(builtin_field_decl)
+                user_defined = True
 
-        opt_tok = ctx.consume_identifier(builtin_field_decl)
-        if not opt_tok.value in scanner.Scanner.known_field_options:
-            ctx.throw(builtin_field_decl, "Unrecognized keyword: " + opt_tok.value)
+            opt_tok = ctx.consume_identifier(builtin_field_decl)
+            if user_defined:
+                ctx.consume_paren_close(builtin_field_decl)
 
-        if user_defined:
-            ctx.consume_paren_close(builtin_field_decl)
+            while ctx.scanner.next() == Token.Type.Dot:
+                ctx.consume()
+                opt_tok.value += "."
+                tok = ctx.consume_identifier(builtin_field_decl)
+                opt_tok.value += tok.value
 
-        ctx.consume_equals(message_field_decl)
-        opt_value_tok = ctx.consume()
-        options[opt_tok.value] = opt_value_tok.value
-        log(2, "[parser] " + indent_from_scope(scope + ".a") + "consumed an option: " + opt_tok.value)
+            ctx.consume_equals(message_field_decl)
+            opt_value_tok = ctx.consume()
+            options[opt_tok.value] = opt_value_tok.value
+            log(2, "[parser] " + indent_from_scope(scope + ".a") + "consumed an option: " + opt_tok.value)
+
+            if ctx.scanner.next() == Token.Type.SquareClose:
+                break
+
+            ctx.consume_coma(message_field_decl)
 
         ctx.consume_square_close(builtin_field_decl)
+
     ctx.consume_semi(builtin_field_decl)
 
     field_ast = nodes.Field(fname.value,

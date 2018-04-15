@@ -2,15 +2,20 @@ import "google/protobuf/descriptor.proto";
 
 package thing;
 
+message FieldOptions {
+  bool include_in_hash = 1 [ default = false ];
+  bool include_in_equivalence = 2 [ default = false ];
+}
+
 extend google.protobuf.FieldOptions {
-  optional bool include_in_hash = 60000 [ default = false ];
+  FieldOptions fopt = 60000;
 }
 
 message Block {
   // Unique ID each object. Mandatory.
-  int32 id = 1 [ (include_in_hash) = true ];
+  int32 id = 1 [ (fopt).include_in_hash = true, (fopt).include_in_equivalence = true ];
 
-  string name = 2;
+  string name = 2 [ (fopt).include_in_equivalence = true ];
   string email = 3;
 }
 

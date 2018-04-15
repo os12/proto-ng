@@ -416,7 +416,7 @@ class Message:
         with_hashing = False
         for _, field in self.fields.items():
             for name, value in field.options.items():
-                if name == "include_in_hash":
+                if name.find("include_in_hash") >= 0:
                     with_hashing = True
         if not with_hashing: return
 
@@ -430,7 +430,7 @@ class Message:
 
         for _, field in self.fields.items():
             for name, value in field.options.items():
-                if name == "include_in_hash":
+                if name.find("include_in_hash") >= 0:
                     writeln(file, "::proto_ng::hash_combine(hash, arg." + field.name + "());",
                             indent + 2)
                     break
