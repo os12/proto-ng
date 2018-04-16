@@ -126,7 +126,7 @@ class File:
                 extend.generate_extend_declarations(file, 0)
             writeln(file, "")
 
-        for ns in self.namespace.split("."):
+        for ns in reversed(self.namespace.split(".")):
             writeln(file, "}  // " + ns)
 
         # Extension helpers
@@ -191,10 +191,15 @@ class File:
             writeln(file, "namespace " + ns + " {")
         writeln(file, "")
 
+        # Messages
         for _, msg in self.messages.items():
             msg.generate_source(file, self.namespace)
 
-        for ns in self.namespace.split("."):
+        # Enums
+        for _, enum in self.enums.items():
+            enum.generate_definition(file)
+
+        for ns in reversed(self.namespace.split(".")):
             writeln(file, "}  // " + ns)
 
         # Finally generate extension objects. It's easier to declare these in a FQ fashion.
@@ -232,11 +237,10 @@ class Enum:
 
     def generate_declaration(self, file):
         writeln(file, "enum " + self.impl_cpp_type + " : int {")
-
         for id, value in self.values.items():
             writeln(file, self.decorate(value) + " = " + str(id) + ",", 1)
-
         writeln(file, "};")
+        writeln(file, "std::ostream& operator<<(std::ostream&, " + self.impl_cpp_type + ");")
 
     def generate_shortcut_declarations(self, file, indent):
         writeln(file, "// Enum: " + self.fq_name, indent)
@@ -246,6 +250,21 @@ class Enum:
                     "const static " + self.impl_cpp_type + " " + value + " = "
                         + self.impl_cpp_type + "_" + value + ";",
                     indent)
+        writeln(file, "")
+
+    def generate_definition(self, file):
+        writeln(file, "// Enum: " + self.fq_name)
+        writeln(file, "std::ostream& operator<<(std::ostream& st, " + self.impl_cpp_type + " val) {")
+        writeln(file, "switch (val) {", 1)
+        for id, value in self.values.items():
+            writeln(file, "case " + self.cpp_value_prefix() + value + ': // [' + str(id) + ']' , 1)
+            writeln(file, 'st << "' + value + '";', 2)
+            writeln(file, 'break;', 2)
+        writeln(file, "default:", 1)
+        writeln(file, 'st << "<unrecignized>";', 2)
+        writeln(file, "}", 1)
+        writeln(file, "return st;", 1)
+        writeln(file, "}")
         writeln(file, "")
 
     def initializer(self):
@@ -273,10 +292,12 @@ class Message:
             writeln(file, "")
 
         # Enums
-        if len(self.enums.keys()) > 0:
+        if len(self.enums) > 0:
             writeln(file, "// Enums")
         for _, enum in self.enums.items():
             enum.generate_declaration(file)
+        if len(self.enums) > 0:
+            writeln(file, "")
 
         # Start the C++ class.
         writeln(file, "class " + self.impl_cpp_type + " {", indent)
@@ -623,6 +644,10 @@ class Message:
         # Field accessors for the given message
         for id, field in self.fields.items():
             field.generate_accessor_definitions(file)
+
+        # Enums
+        for _, enum in self.enums.items():
+            enum.generate_definition(file)
 
         # Sub-messages
         #

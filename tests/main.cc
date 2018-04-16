@@ -15,6 +15,7 @@ int main() {
     p.set_email("bob@foobar");
     p.add_phone_vec()->set_number("111");
     p.add_phone_vec()->set_number("222");
+    p.phone_vec().at(0).set_itype(thing::Person::PhoneNumber::HOME);
     ab.person_vec().push_back(std::move(p));
   }
 

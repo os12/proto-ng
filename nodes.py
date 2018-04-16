@@ -326,6 +326,12 @@ class Enum(Node, gen.Enum):
     def fq_cpp_ref(self):
         return self.ns + "::" + self.impl_cpp_type
 
+    def cpp_value_prefix(self):
+        if type(self.parent) == File:
+            return ""
+        else:
+            return self.impl_cpp_type + "_"
+
     def print_name(self):
         global args
         if args.fq:
