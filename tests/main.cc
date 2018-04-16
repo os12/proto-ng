@@ -13,8 +13,13 @@ int main() {
   {
     thing::Person p;
     p.set_email("bob@foobar");
+    p.add_phone_vec()->set_number("111");
+    p.add_phone_vec()->set_number("222");
     ab.person_vec().push_back(std::move(p));
   }
+
+  // Debug output
+  std::cout << "AB:\n" << ab.DebugString();
 
   // Deprecated protobuf API
   //assert(ab.person_vec().size() == ab.person_vec_size());

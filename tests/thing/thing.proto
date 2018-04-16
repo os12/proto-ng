@@ -55,7 +55,7 @@ message AddressBook {
   repeated int32 y = 3;
 
   map<int32, int64> int_map = 4;
-  map<int32, string> int_map2 = 5;
+  map<int32, string> string_map = 5;
   map<int32, Person> person_map = 6;
 }
 

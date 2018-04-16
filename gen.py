@@ -177,6 +177,7 @@ class File:
         file = open_file(fname)
 
         writeln(file, "#include <bitset>")
+        writeln(file, "#include <sstream>")
         writeln(file, "")
 
         # Include directives. At this point we need every generated type that comes from
@@ -305,7 +306,7 @@ class Message:
         writeln(file, "void Clear();", indent + 1)
         writeln(file, "bool ParseFromString(const std::string& input_data);", indent + 1)
         writeln(file, "std::string SerializeAsString() const;", indent + 1)
-        writeln(file, "std::string DebugString() const;", indent + 1)
+        writeln(file, 'std::string DebugString(std::string prefix = "") const;', indent + 1)
         writeln(file, "std::string ShortDebugString() const;", indent + 1)
         writeln(file, "")
 
@@ -602,10 +603,20 @@ class Message:
         writeln(file,
                 "bool " + self.impl_cpp_type + "::operator<(const " + self.impl_cpp_type +
                     "& arg) const {")
-        # Field accessors for the given message
         for _, field in self.fields.items():
             field.generate_less_check(file, 1)
         writeln(file, "return false;", 1)
+        writeln(file, "}")
+        writeln(file, "")
+
+        # Debug helper functions
+        writeln(file,
+                "std::string " + self.impl_cpp_type + "::DebugString(std::string prefix) const {")
+        writeln(file, "std::stringstream ss;", 1)
+        writeln(file, "")
+        for _, field in self.fields.items():
+            field.generate_debug_output(file, 1)
+        writeln(file, "return ss.str();", 1)
         writeln(file, "}")
         writeln(file, "")
 
@@ -876,4 +887,48 @@ class Field:
                 "if (rep_->" + self.name + " < arg.rep_->" + self.name + ")",
                 indent)
         writeln(file, "return true;", indent + 1)
+        writeln(file, "")
+
+    def generate_debug_output(self, file, indent):
+        writeln(file, "// " + self.as_string("ns"), indent)
+
+        if self.is_repeated:
+            # This is a vector of something
+            writeln(file, "for (const auto& entry : rep_->" + self.name + ") {", indent)
+            writeln(file, 'ss << prefix << "' + self.name + ' {\\n";', indent + 1)
+            if self.is_builtin or self.is_enum:
+                writeln(file,
+                        "ss << \"" + self.name + ": \" << entry << \"\\n\";",
+                        indent + 1)
+            else:
+                writeln(file, 'ss << entry.DebugString(prefix + "  ");', indent + 1)
+            writeln(file, 'ss << prefix << "}\\n";', indent + 1)
+            writeln(file, '}', indent)
+        elif self.is_map:
+            # This is a map of something
+            writeln(file, "for (const auto& entry : rep_->" + self.name + ") {", indent)
+            writeln(file, 'ss << prefix << "' + self.name + ' {\\n";', indent + 1)
+            writeln(file, 'ss << prefix << "  key: " << entry.first << "\\n";', indent + 1)
+            writeln(file, 'ss << prefix << "  value {\\n";', indent + 1)
+            if self.resolved_type:
+                writeln(file, 'ss << entry.second.DebugString(prefix + "  ");', indent + 1)
+            else:
+                writeln(file, "ss << entry.second;", indent + 1)
+            writeln(file, 'ss << "}\\n";', indent + 1)
+            writeln(file, "}", indent)
+        elif self.is_builtin or self.is_enum:
+            # This is a singular built-in
+            writeln(file, "if (rep_->_Presence.test(" + str(self.id) + "))",
+                    indent)
+            writeln(file,
+                    "ss << prefix << \"" + self.name + ": \" << rep_->" + self.name + " << \"\\n\";",
+                    indent + 1)
+        else:
+            # This is a singular sub-message
+            writeln(file, "if (rep_->_Presence.test(" + str(self.id) + "))",
+                    indent)
+            writeln(file,
+                    "ss << prefix << \"" + self.name +
+                        ": \" << rep_->" + self.name + '.DebugString(prefix + "  ");',
+                    indent + 1)
         writeln(file, "")
