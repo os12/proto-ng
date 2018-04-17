@@ -109,6 +109,17 @@ void Extensions() {
       p.MutableExtension(thing::NestedExtension::ext200);
 }
 
+void Repeated() {
+  thing::AddressBook ab;
+  ab.x().push_back("s1");
+  ab.x().push_back("s2\\foo:\"bob\"");
+  ab.x().push_back("s3:[\x10\x11\x12]");
+  ab.y().push_back(0);
+  ab.y().push_back(1);
+  ab.y().push_back(2);
+  std::cout << "AddressBook:\n" << ab.DebugString();
+}
+
 } // namespace
 
 int main() {
@@ -116,6 +127,7 @@ int main() {
   Extensions();
   Equality();
   SetsHashes();
+  Repeated();
 
   std::cout << "All good!\n";
   return 0;

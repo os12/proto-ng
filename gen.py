@@ -1,5 +1,6 @@
 from collections import namedtuple
 from utils import writeln, write_blank_if, log
+from template import Templates
 
 import os
 
@@ -63,28 +64,7 @@ class File:
         self.generate_source(fname.cc)
 
         file = open_file(args.cpp_out + "/infra.h")
-
-        writeln(file, "#pragma once")
-        writeln(file, "#include <functional>")
-        writeln(file, "")
-        writeln(file, "namespace proto_ng {")
-        writeln(file, "// Support for extensions")
-        writeln(file, "namespace detail {")
-        writeln(file, "template<typename Extension>")
-        writeln(file, "struct Helper {};")
-        writeln(file, "template<typename Extension>")
-        writeln(file, "inline int ResolveField(Extension) { return -1; }")
-        writeln(file, "}  // detail")
-        writeln(file, "")
-
-        writeln(file, "template <typename T>")
-        writeln(file, "inline void hash_combine(std::size_t& seed, const T& v) {")
-        writeln(file, "  seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);")
-        writeln(file, "}")
-        writeln(file, "")
-
-        writeln(file, "}  // proto_ng")
-        writeln(file, "")
+        writeln(file, Templates.infra)
 
     def count_extends(self):
         count = len(self.extends)
@@ -176,9 +156,7 @@ class File:
     def generate_source(self, fname):
         file = open_file(fname)
 
-        writeln(file, "#include <bitset>")
-        writeln(file, "#include <sstream>")
-        writeln(file, "")
+        writeln(file, Templates.impl)
 
         # Include directives. At this point we need every generated type that comes from
         # every "import" statement.
@@ -920,14 +898,18 @@ class Field:
         if self.is_repeated:
             # This is a vector of something
             writeln(file, "for (const auto& entry : rep_->" + self.name + ") {", indent)
-            writeln(file, 'ss << prefix << "' + self.name + ' {\\n";', indent + 1)
             if self.is_builtin or self.is_enum:
+                if self.is_algebraic:
+                    entry = 'entry'
+                else:
+                    entry = 'Escape(entry)'
                 writeln(file,
-                        "ss << \"" + self.name + ": \" << entry << \"\\n\";",
+                        'ss << "' + self.name + ': " << ' + entry + ' << "\\n";',
                         indent + 1)
             else:
+                writeln(file, 'ss << prefix << "' + self.name + ' {\\n";', indent + 1)
                 writeln(file, 'ss << entry.DebugString(prefix + "  ");', indent + 1)
-            writeln(file, 'ss << prefix << "}\\n";', indent + 1)
+                writeln(file, 'ss << prefix << "}\\n";', indent + 1)
             writeln(file, '}', indent)
         elif self.is_map:
             # This is a map of something
