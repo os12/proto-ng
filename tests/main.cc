@@ -6,8 +6,11 @@
 #include <thing/containers.pbng.h>
 #include <thing/ext.pbng.h>
 #include <thing/thing.pbng.h>
+#include <thing/foreign.pbng.h>
 
-int main() {
+namespace {
+
+void BasicAPI() {
   // Next-gen protobuf API
   thing::AddressBook ab;
   {
@@ -24,26 +27,10 @@ int main() {
 
   // Deprecated protobuf API
   //assert(ab.person_vec().size() == ab.person_vec_size());
+}
 
-  // Deprecated protobuf v2 extensions
-  {
-    thing::Person p;
-    p.HasExtension(thing::ext100);
-    thing::GlobalExtension *gext =
-        p.MutableExtension(thing::ext100);
-
-    p.HasExtension(thing::NestedExtension::ext200);
-    thing::NestedExtension *next =
-        p.MutableExtension(thing::NestedExtension::ext200);
-  }
-
-  {
-    thing::Person p;
-    p.set_id(5);
-    std::set<thing::Person> set = {p};
-    assert(set.size() == 1);
-  }
-
+void Equality() {
+  // Basic equality and total ordering.
   thing::Person p1, p2;
   assert(p1 == p2);
   assert(!(p1 != p2));
@@ -52,17 +39,34 @@ int main() {
   assert(p1 > p2);
   assert(p1 != p2);
 
+  // A proto3-style feature - it's a scalar with the default value
   p1.set_id(0);
-  assert(p1 == p2);     // a proto3-style check - it's a scalar with the default value
+  assert(p1 == p2);
   p1.clear_id();
   assert(p1 == p2);
 
+  // A proto3-style feature - "0" is default
   p1.set_ph_type_v3(thing::Person::PhoneNumber::WORK);
   assert(p1 > p2);
-  p1.set_ph_type_v3(thing::Person::PhoneNumber::MOBILE); // a proto3-style check - "0" is default
+  p1.set_ph_type_v3(thing::Person::PhoneNumber::MOBILE);
   assert(p1 == p2);
-
   assert(p1 == thing::Person::default_instance());
+
+  // a proto3-style feature - sub-messages with default content are as good
+  // as missing
+  thing::WithForwardRef m1, m2;
+  assert(m1 == m2);
+  m1.member().set_field(0);
+  assert(m1 == m2);
+}
+
+void SetsHashes() {
+  {
+    thing::Person p;
+    p.set_id(5);
+    std::set<thing::Person> set = {p};
+    assert(set.size() == 1);
+  }
 
   // Hashing
   std::unordered_set<thing::Block> set;
@@ -93,6 +97,25 @@ int main() {
     assert(std::equal_to<thing::Block>()(*rv.first, b3));
     assert(*rv.first == b2);
   }
+}
+
+void Extensions() {
+  thing::Person p;
+  p.HasExtension(thing::ext100);
+  thing::GlobalExtension *gext = p.MutableExtension(thing::ext100);
+
+  p.HasExtension(thing::NestedExtension::ext200);
+  thing::NestedExtension *next =
+      p.MutableExtension(thing::NestedExtension::ext200);
+}
+
+} // namespace
+
+int main() {
+  BasicAPI();
+  Extensions();
+  Equality();
+  SetsHashes();
 
   std::cout << "All good!\n";
   return 0;

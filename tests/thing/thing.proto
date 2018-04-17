@@ -1,9 +1,5 @@
 package thing;
 
-import "google/protobuf/timestamp.proto";
-
-option csharp_namespace = "Google.Protobuf.Examples.AddressBook";
-
 enum GlobalType {
   A = 0; /* a comment */
   B = 1;
@@ -42,10 +38,6 @@ message Person {
   PhoneNumber.InnerPhoneType ph_type_v2 = 10 [ default = HOME ];
   PhoneNumber.InnerPhoneType ph_type_v3 = 11;
 
-  // Imported messages
-  google.protobuf.Timestamp timestamp = 5;
-  google.protobuf.ForeignOuter.ForeignInner imported = 6;
-
   extensions 100 to 199;
 }
 
@@ -57,18 +49,4 @@ message AddressBook {
   map<int32, int64> int_map = 4;
   map<int32, string> string_map = 5;
   map<int32, Person> person_map = 6;
-}
-
-message WithForwardRef {
-  OtherMessage member = 1;
-}
-
-message OtherMessage {
-  int32 field = 1;
-  repeated string required_feature_vec = 42;
-}
-
-message ForeignUser {
-  google.protobuf.ProtobufOuterType fouter = 1;
-  google.protobuf.ForeignOuter.ProtobufInnerType finner = 2;
 }
