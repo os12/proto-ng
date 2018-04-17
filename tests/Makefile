@@ -1,7 +1,5 @@
 PROTOC := ../protoc-ng.py
-PROTOC_OPTIONS := --all \
-		  -I . -I /cygdrive/c/dev/toolchain/x86_64-windows/protobuf-3.0.0/include \
-		  --cpp_out build
+PROTOC_OPTIONS := --all -I . --cpp_out build
 PROTOC_OPTIONS_EXTRA :=
 CXX_OPTIONS := -std=c++14 -I build -g
 
