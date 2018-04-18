@@ -1,0 +1,3 @@
+[submodule "extern/protozero"]
+	path = extern/protozero
+	url = git@github.com:os12/protozero.git
