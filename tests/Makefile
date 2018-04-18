@@ -1,7 +1,7 @@
 PROTOC := ../protoc-ng.py
 PROTOC_OPTIONS := --all -I . --cpp_out build
 PROTOC_OPTIONS_EXTRA :=
-CXX_OPTIONS := -std=c++14 -I build -g
+CXX_OPTIONS := -std=c++14 -I build -I ../extern/protozero/include -g
 
 all: build/test
 

@@ -3,6 +3,8 @@
 #include <unordered_set>
 #include <set>
 
+#include <protozero/pbf_reader.hpp>
+
 #include <thing/containers.pbng.h>
 #include <thing/ext.pbng.h>
 #include <thing/thing.pbng.h>

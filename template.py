@@ -24,6 +24,8 @@ inline void hash_combine(std::size_t& seed, const T& v) {
     impl = r'''#include <bitset>
 #include <sstream>
 
+#include <protozero/pbf_reader.hpp>
+
 namespace {
 
 std::string Escape(const std::string& data) {
