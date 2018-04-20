@@ -52,6 +52,11 @@ std::string Escape(const std::string& data) {
     return rv;
 }
 
+std::string Escape(const std::wstring& data) {
+    return Escape(
+        std::string(reinterpret_cast<const char*>(data.data()),
+                    data.size() * sizeof(wchar_t)));
 }
 
+}
 '''

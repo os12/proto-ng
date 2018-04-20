@@ -44,8 +44,9 @@ class Scanner:
     keywords = {'package', 'syntax', 'import', 'option',
                            'message', 'enum', 'extend',
                            'reserved', 'extensions', 'max', 'to'}
-    data_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'string', 'bool',
-                 'bytes']
+    data_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float',
+                 'string', 'bytes', "wstring",
+                 'bool']
     specifiers = ['repeated', 'optional', 'required', 'map']
     known_field_options = ["default", "deprecated", "packed", "include_in_hash"]
 

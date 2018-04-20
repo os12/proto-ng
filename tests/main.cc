@@ -18,6 +18,7 @@ void BasicAPI() {
   {
     thing::Person p;
     p.set_email("bob@foobar");
+    p.set_wide_name(L"(Олег)");
     p.add_phone_vec()->set_number("111");
     p.add_phone_vec()->set_number("222");
     p.phone_vec().at(0).set_itype(thing::Person::PhoneNumber::HOME);

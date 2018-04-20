@@ -9,6 +9,7 @@ enum GlobalType {
 // This is my Person.
 message Person {
   string name = 1;
+  wstring wide_name = 5;
   int32 id = 2;  // Unique ID number for this person.
   string email = 3;
 

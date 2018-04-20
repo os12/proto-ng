@@ -35,8 +35,10 @@ def get_cpp_file_paths(file_ast, out_path):
                     out_path + ".".join(parts) + ".h")
 
 def cpp_arg_type(proto_type):
-    if proto_type == "string":
+    if proto_type == "string" or proto_type == "bytes":
         return "const std::string&"
+    elif proto_type == "wstring":
+        return "const std::wstring&"
     elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
         return proto_type + "_t"
     else:
@@ -45,6 +47,8 @@ def cpp_arg_type(proto_type):
 def cpp_impl_type(proto_type):
     if proto_type == "string" or proto_type == "bytes":
         return "std::string"
+    elif proto_type == "wstring":
+        return "std::wstring"
     elif proto_type[-2:] == "32" or proto_type[-2:] == "64":
         return proto_type + "_t"
     else:
@@ -927,8 +931,12 @@ class Field:
             # This is a singular built-in
             writeln(file, "if (rep_->_Presence.test(" + str(self.id) + "))",
                     indent)
+            if self.is_algebraic or self.is_enum:
+                value = 'rep_->' + self.name
+            else:
+                value = 'Escape(rep_->' + self.name + ')'
             writeln(file,
-                    "ss << prefix << \"" + self.name + ": \" << rep_->" + self.name + " << \"\\n\";",
+                    'ss << prefix << "' + self.name + ': " << ' + value + ' << "\\n";',
                     indent + 1)
         else:
             # This is a singular sub-message

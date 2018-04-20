@@ -357,7 +357,7 @@ class Enum(Node, gen.Enum):
 
 class Field(Node, gen.Field):
     algebraic_types = ['int32', 'uint32', 'int64', 'uint64', 'double', 'float', 'bool']
-    string_types = ['string', 'bytes']
+    string_types = ['string', 'bytes', 'wstring']
 
     def __init__(self, name, id, raw_type, resolved_type, specifier, mapped_type = None):
         Node.__init__(self)
