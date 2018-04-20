@@ -278,6 +278,10 @@ def builtin_field_decl(ctx, parent, spec, scope):
     if len(options) > 0:
         field_ast.options = options
 
+    if int(fid.value) in parent.fields.keys():
+        sys.exit('Error: duplicate field identifier for ' + fname.value + ' : ' +
+                 fid.value + '. It is already used by "' + parent.fields[int(fid.value)].name + '"')
+
     parent.fields[int(fid.value)] = field_ast
 
 
@@ -320,6 +324,10 @@ def map_field_decl(ctx, parent, scope):
     field_ast.parent = parent
     assert(field_ast.is_map)
     field_ast.resolved_type = resolved_mapped_type
+
+    if int(fid.value) in parent.fields.keys():
+        sys.exit('Error: duplicate field identifier for ' + fname.value + ' : ' +
+                 fid.value + '. It is already used by "' + parent.fields[int(fid.value)].name + '"')
 
     parent.fields[int(fid.value)] = field_ast
     log(2, "[parser] " + indent_from_scope(scope) + "consumed a map 'field' declaration: " + fname.value)
@@ -387,6 +395,10 @@ def message_field_decl(ctx, parent, spec, scope):
     field_ast.parent = parent
     if type(resolved_type) is nodes.Enum:
         field_ast.is_enum = True
+
+    if int(fid.value) in parent.fields.keys():
+        sys.exit('Error: duplicate field identifier for ' + fname.value + ' : ' +
+                 fid.value + '. It is already used by "' + parent.fields[int(fid.value)].name + '"')
 
     parent.fields[int(fid.value)] = field_ast
     log(2, "[parser] " + indent_from_scope(scope) + "consumed a message 'field' declaration: " + fname.value)
